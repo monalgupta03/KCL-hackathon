@@ -1,0 +1,202 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #d9dde0; font-family: Arial, Helvetica, sans-serif; color: #222; }
+
+/* Desktop: show a phone in the middle of the screen */
+#stage { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+#phone { position: relative; width: 375px; height: min(780px, 94vh); background: #fff; border: 12px solid #1c1c1c; border-radius: 42px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+#notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 120px; height: 20px; background: #1c1c1c; border-radius: 0 0 14px 14px; z-index: 5; }
+
+header { padding: 30px 16px 12px; background: #2e6b3a; color: #fff; font-weight: bold; font-size: 18px; }
+main { flex: 1; overflow-y: auto; padding: 16px; }
+nav { display: flex; border-top: 1px solid #ccc; }
+nav button { flex: 1; padding: 14px 0; border: 0; background: #f4f4f4; font-size: 15px; font-family: inherit; cursor: pointer; }
+nav button.active { background: #fff; color: #2e6b3a; font-weight: bold; border-top: 3px solid #2e6b3a; }
+
+h2 { font-size: 17px; margin: 0 0 10px; }
+p { line-height: 1.4; margin: 6px 0; }
+.small { font-size: 13px; color: #666; }
+.row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd; }
+.soon { color: #b3261e; font-weight: bold; }
+.card { border: 1px solid #bbb; padding: 12px; margin-bottom: 12px; }
+.card h3 { margin: 0 0 6px; font-size: 16px; }
+.msg { background: #eef6ef; border: 1px solid #2e6b3a; padding: 10px; margin-bottom: 12px; font-size: 14px; }
+.error { background: #fdecea; border: 1px solid #b3261e; padding: 10px; font-size: 13px; }
+.gap { margin-top: 16px; }
+
+.btn { padding: 10px 14px; border: 1px solid #2e6b3a; background: #fff; color: #2e6b3a; font-size: 14px; font-family: inherit; cursor: pointer; margin: 0 6px 6px 0; }
+.btn.main { background: #2e6b3a; color: #fff; }
+.btn.sel { background: #2e6b3a; color: #fff; }
+.btn.big { width: 100%; padding: 14px; font-size: 16px; margin: 10px 0; }
+input { padding: 10px; font-size: 15px; border: 1px solid #aaa; width: 100%; margin-bottom: 10px; font-family: inherit; }
+
+/* On a real phone: fill the screen, no frame */
+@media (max-width: 500px) {
+  #stage { padding: 0; display: block; }
+  #phone { width: 100%; height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
+  #notch { display: none; }
+  header { padding-top: 14px; }
+}
+
+/* Add tab */
+.add-page { color: #26352b; }
+.add-heading { margin: 2px 0 18px; }
+.add-heading h2 { margin: 2px 0 4px; font-size: 22px; color: #173f2b; }
+.add-heading > p:last-child { margin: 0; color: #6c786f; font-size: 13px; }
+.add-eyebrow, .add-label { margin: 0; color: #6c806f; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
+.smart-card { padding: 18px; margin-bottom: 14px; border: 1px solid #d8e3d8; border-radius: 18px; background: #f3f7f0; box-shadow: 0 5px 16px rgba(31, 70, 45, 0.07); }
+.smart-icon { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 14px; border-radius: 13px; background: #dcebdd; color: #24583a; font-size: 22px; }
+.smart-copy h3 { margin: 4px 0; color: #173f2b; font-size: 19px; }
+.smart-copy p:last-child { margin: 0; color: #68776c; font-size: 13px; }
+.smart-status { display: flex; align-items: center; gap: 7px; margin: 15px 0 2px; color: #59675d; font-size: 12px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #9aa59c; }
+.add-sync { margin-bottom: 0 !important; }
+.add-feedback { min-height: 18px; margin: 8px 0 0; color: #49644f; font-size: 12px; }
+.add-section { margin: 0 0 12px; border: 1px solid #e0e5df; border-radius: 15px; background: #fff; overflow: hidden; }
+.add-section > summary { display: flex; align-items: center; gap: 12px; min-height: 70px; padding: 13px 14px; cursor: pointer; list-style: none; }
+.add-section > summary::-webkit-details-marker { display: none; }
+.add-section > summary::after { content: "+"; margin-left: auto; color: #52725b; font-size: 21px; line-height: 1; }
+.add-section[open] > summary::after { content: "−"; }
+.section-icon { flex: 0 0 38px; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: #eff4eb; color: #315d3c; font-size: 18px; }
+.section-title { display: grid; gap: 4px; }
+.section-title strong { color: #263b2d; font-size: 14px; }
+.section-title small { color: #748078; font-size: 11px; line-height: 1.35; }
+.section-content { padding: 0 14px 15px; }
+.camera-frame { position: relative; display: grid; place-items: center; min-height: 190px; overflow: hidden; border-radius: 12px; background: #18231c; }
+.camera-frame video, .camera-frame img { display: block; width: 100%; max-height: 300px; aspect-ratio: 4 / 3; object-fit: cover; }
+.camera-placeholder { display: grid; justify-items: center; gap: 8px; padding: 20px; color: #d9e4db; text-align: center; }
+.camera-placeholder span { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #65756a; border-radius: 50%; font-size: 26px; }
+.camera-placeholder p { margin: 0; font-size: 12px; }
+.camera-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.camera-actions .big { margin: 8px 0 0; }
+.camera-actions [data-action='open-camera'], .camera-actions [data-action='capture'] { grid-column: 1 / -1; }
+.camera-actions [hidden], .camera-frame [hidden] { display: none !important; }
+.scan-result { padding-top: 12px; margin-top: 14px; border-top: 1px solid #e0e5df; }
+.scan-result-note { margin: 0 0 12px; color: #68766c; font-size: 12px; }
+.scan-result-list { display: grid; gap: 10px; margin-bottom: 12px; }
+.scan-result-item { padding: 10px; border: 1px solid #dfe6df; border-radius: 10px; background: #f8faf7; }
+.scan-result-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.scan-result-remove { padding: 0; border: 0; background: transparent; color: #8c5a4b; font-size: 11px; font-weight: bold; cursor: pointer; }
+.scan-result-item-row { display: grid; grid-template-columns: 1.2fr 0.8fr 0.9fr; gap: 8px; }
+.scan-result-item-row input { margin-bottom: 0; }
+.add-label { margin: 4px 0 9px; }
+.quick-add-list { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
+.quick-add { margin: 0; padding: 8px 11px; border-color: #d7e2d7; border-radius: 20px; background: #f7faf6; font-size: 12px; }
+.add-field-label { display: block; margin: 0 0 6px; color: #49574d; font-size: 12px; font-weight: bold; }
+.add-section input { min-height: 44px; padding: 11px 12px; border-color: #d7ded7; border-radius: 10px; background: #fcfdfb; }
+.add-section select { width: 100%; min-height: 42px; padding: 9px 11px; margin-bottom: 10px; border: 1px solid #d7ded7; border-radius: 10px; background: #fcfdfb; color: #34483a; font: inherit; font-size: 13px; }
+.add-leftover-fields[hidden] { display: none; }
+.add-section .btn { border-radius: 10px; }
+.add-section .btn:focus-visible, .smart-card .btn:focus-visible, .add-section summary:focus-visible { outline: 3px solid #94bd9b; outline-offset: 2px; }
+.add-page button { transition: background-color 140ms ease, transform 140ms ease; }
+.add-page button:active { transform: translateY(1px); }
+@media (max-width: 500px) {
+  .smart-card { border-radius: 16px; }
+  .camera-frame { min-height: 175px; }
+}
+
+/* Cook tab */
+.cook-page { color: #26352b; }
+.cook-heading { margin: 2px 0 16px; padding: 0; background: transparent; color: inherit; font-weight: normal; font-size: inherit; }
+.cook-eyebrow, .cook-section-label, .cook-label { margin: 0; color: #718276; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
+.cook-heading h2 { margin: 5px 0; color: #173f2b; font-size: 23px; }
+.cook-heading > p:last-child { margin: 0; color: #68766c; font-size: 13px; }
+.cook-context { padding: 10px 12px; margin: 0 0 15px; border: 1px solid #d9e7d8; border-radius: 12px; background: #f2f7ef; color: #375c3f; font-size: 12px; }
+.cook-context span { margin-right: 4px; color: #5f936b; }
+.cook-time-block { padding: 12px 0 15px; }
+.cook-time-filters { display: flex; gap: 8px; margin-top: 10px; }
+.cook-chip { min-width: 68px; padding: 9px 14px; border: 1px solid #d7e0d8; border-radius: 20px; background: #fff; color: #48624d; font: inherit; font-size: 12px; cursor: pointer; }
+.cook-chip.active { border-color: #24583a; background: #24583a; color: #fff; box-shadow: 0 3px 8px rgba(36, 88, 58, .18); }
+.cook-recipe, .cook-detail, .cook-empty { padding: 16px; margin: 0 0 13px; border: 1px solid #e0e7df; border-radius: 16px; background: #fff; box-shadow: 0 4px 14px rgba(34, 62, 42, .05); }
+.cook-recipe-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.cook-recipe-mark, .cook-detail-mark { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: #eff5ec; font-size: 19px; }
+.cook-recipe-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.cook-time { color: #53665a; font-size: 11px; }
+.cook-time span { color: #477453; font-size: 15px; vertical-align: -1px; }
+.cook-use-soon { padding: 4px 7px; border-radius: 12px; background: #fff2e6; color: #9b5b27; font-size: 10px; }
+.cook-recipe h3, .cook-detail h3 { margin: 13px 0 12px; color: #173f2b; font-size: 18px; line-height: 1.25; }
+.cook-label { margin: 0 0 5px; font-size: 9px; }
+.cook-ingredient-summary { margin: 0; color: #435347; font-size: 12px; line-height: 1.5; }
+.cook-reason { padding-top: 10px; margin: 11px 0 0; border-top: 1px solid #edf0eb; color: #66746a; font-size: 11px; line-height: 1.5; }
+.cook-reason span { color: #749879; }
+.cook-recipe-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
+.cook-recipe-actions .btn { min-height: 40px; padding: 8px; margin: 0; border-radius: 10px; font-size: 12px; }
+.cook-recipe-actions .cook-skip { border-color: #dbe2db; color: #58675c; }
+.cook-empty { padding: 24px 16px; text-align: center; }
+.cook-empty > div { margin-bottom: 8px; font-size: 25px; }
+.cook-empty h3 { margin: 0 0 7px; color: #264731; font-size: 16px; }
+.cook-empty p { margin: 0 0 14px; color: #6d796f; font-size: 12px; }
+.cook-empty .btn { border-radius: 10px; }
+.cook-detail { padding: 16px; }
+.cook-back { padding: 3px 0; margin-bottom: 16px; border: 0; background: transparent; color: #416c4b; font: inherit; font-size: 12px; cursor: pointer; }
+.cook-back span { padding-right: 5px; font-size: 16px; }
+.cook-detail-mark { margin-bottom: 13px; }
+.cook-detail h3 { margin: 5px 0 7px; font-size: 20px; }
+.cook-detail h4 { margin: 19px 0 8px; color: #284a33; font-size: 13px; }
+.cook-ingredients { display: grid; gap: 7px; padding: 0; margin: 0; list-style: none; }
+.cook-ingredients li { display: flex; align-items: center; gap: 8px; color: #4f5e52; font-size: 12px; }
+.cook-check { color: #4a8256; }
+.cook-placeholder { padding: 11px; border-radius: 9px; background: #f5f7f3; color: #728075; font-size: 12px; }
+.cook-steps { padding-left: 20px; color: #4f5e52; font-size: 12px; line-height: 1.6; }
+.cook-confirm { border-radius: 10px; }
+.cook-page button:focus-visible { outline: 3px solid #94bd9b; outline-offset: 2px; }
+@media (max-width: 500px) {
+  .cook-recipe, .cook-detail, .cook-empty { border-radius: 14px; }
+  .cook-recipe-actions { grid-template-columns: 1fr 1fr; }
+}
+
+/* Fridge tab */
+.fridge-page { color: #26352b; }
+.fridge-heading { margin: 2px 0 14px; }
+.fridge-eyebrow { margin: 0; color: #718276; font-size: 10px; font-weight: bold; letter-spacing: 1px; }
+.fridge-heading h2 { margin: 5px 0 4px; color: #173f2b; font-size: 23px; }
+.fridge-heading > p:last-child { margin: 0; color: #68766c; font-size: 13px; }
+.kitchen-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 12px; }
+.kitchen-summary > div { display: grid; justify-items: center; gap: 3px; padding: 10px 5px; border: 1px solid #e1e8df; border-radius: 12px; background: #fafcf9; }
+.kitchen-summary strong { color: #24583a; font-size: 18px; }
+.kitchen-summary span { color: #6b786d; font-size: 10px; text-align: center; }
+.fridge-recommendation { padding: 14px; margin-bottom: 18px; border: 1px solid #d6e4d5; border-radius: 15px; background: #f1f7ef; box-shadow: 0 4px 12px rgba(34, 62, 42, .05); }
+.fridge-recommendation > p:nth-child(2) { margin: 6px 0 10px; color: #36533c; font-size: 13px; line-height: 1.45; }
+.fridge-recommendation .btn { width: 100%; min-height: 42px; margin: 0; border-radius: 10px; }
+.fridge-section { margin: 0 0 19px; }
+.fridge-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.fridge-section-heading h3 { margin: 0; color: #244731; font-size: 16px; }
+.fridge-section-heading p { margin: 3px 0 0; color: #738076; font-size: 11px; }
+.fridge-section-heading .text-action { flex: 0 0 auto; }
+.fridge-empty-inline { padding: 13px; margin: 0; border: 1px dashed #d8e2d7; border-radius: 12px; background: #fafcf9; color: #6b786d; font-size: 12px; }
+.leftover-card, .grocery-card { padding: 12px; margin-bottom: 8px; border: 1px solid #e1e8df; border-radius: 13px; background: #fff; box-shadow: 0 3px 10px rgba(34, 62, 42, .035); }
+.fridge-card-heading { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.food-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; background: #eff5ec; font-size: 18px; }
+.fridge-card-title { min-width: 0; }
+.fridge-card-title h4 { margin: 0; color: #294431; font-size: 13px; overflow-wrap: anywhere; }
+.demo-item-label { display: inline-block; padding: 2px 5px; margin-top: 3px; border-radius: 6px; background: #eef2eb; color: #778176; font-size: 8px; }
+.fridge-card-title p { margin: 3px 0 0; color: #748077; font-size: 10px; line-height: 1.35; }
+.freshness, .expiry-label { max-width: 112px; padding: 5px 7px; border-radius: 9px; background: #f0f4ef; color: #637166; font-size: 9px; line-height: 1.3; text-align: center; }
+.freshness.attention, .expiry-label.attention { background: #fff1e5; color: #955b2c; }
+.freshness.known { background: #eef5ec; color: #426b4a; }
+.fridge-location { margin: 8px 0 0 44px; color: #78837a; font-size: 10px; }
+.fridge-card-actions { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 8px; margin-top: 8px; border-top: 1px solid #eef1ed; }
+.text-action { padding: 2px 0; border: 0; background: transparent; color: #416c4b; font: inherit; font-size: 11px; font-weight: bold; cursor: pointer; }
+.text-action.remove-action { color: #8b5c4b; }
+.fridge-form { display: grid; gap: 9px; padding: 12px; margin-top: 10px; border: 1px solid #e1e8df; border-radius: 11px; background: #f9fbf8; }
+.fridge-form label { display: grid; gap: 4px; color: #526056; font-size: 10px; font-weight: bold; }
+.fridge-form label span { display: inline; color: #78837a; font-weight: normal; }
+.fridge-form input, .fridge-form select { width: 100%; min-height: 38px; padding: 8px 9px; margin: 0; border: 1px solid #d6dfd6; border-radius: 8px; background: #fff; color: #26352b; font: inherit; font-size: 12px; }
+.fridge-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fridge-form-actions { display: flex; gap: 8px; }
+.fridge-form-actions .btn { flex: 1; min-height: 38px; padding: 8px; margin: 0; border-radius: 9px; font-size: 11px; }
+.fridge-empty { padding: 21px 14px; border: 1px dashed #d8e2d7; border-radius: 13px; background: #fafcf9; text-align: center; }
+.fridge-empty > span { font-size: 25px; }
+.fridge-empty h4 { margin: 7px 0 4px; color: #31513a; font-size: 14px; }
+.fridge-empty p { margin: 0 0 11px; color: #748077; font-size: 11px; }
+.fridge-empty .btn { border-radius: 9px; }
+.fridge-activity { padding: 10px 12px; border: 1px solid #e1e8df; border-radius: 11px; color: #506055; font-size: 11px; }
+.fridge-activity summary { cursor: pointer; font-weight: bold; }
+.fridge-activity p { margin: 9px 0 0; color: #748077; }
+.fridge-page button:focus-visible { outline: 3px solid #94bd9b; outline-offset: 2px; }
+@media (max-width: 500px) {
+  .leftover-card, .grocery-card { border-radius: 12px; }
+  .fridge-section-heading h3 { font-size: 15px; }
+  .fridge-card-heading { grid-template-columns: 34px minmax(0, 1fr); }
+  .food-icon { width: 34px; height: 34px; }
+  .freshness, .expiry-label { grid-column: 2; justify-self: start; max-width: 100%; margin-top: 1px; }
+}
