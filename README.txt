@@ -15,12 +15,14 @@
 
    http://127.0.0.1:5500/
 
-5. Add Gemini key in backend/.env before using camera recognition:
+5. Set the backend environment in backend/.env:
 
    GEMINI_API_KEY=your_key_here
+   TIMESCALE_SERVICE_URL=your_tigerdata_postgres_url
 
 Notes:
 - The backend health endpoint is http://127.0.0.1:8000/health
 - The scan endpoint is http://127.0.0.1:8000/scan
+- Inventory is persisted through http://127.0.0.1:8000/inventory
 - Do not commit backend/.env to GitHub
 

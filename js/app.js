@@ -1,5 +1,7 @@
 // Router and click handling. Every button uses data-action, handled below.
 var view = document.getElementById("view");
+var addExpiryEstimatePending = false;
+var grocerySubmissionPending = false;
 
 var renderers = { fridge: renderFridge, cook: renderCook, add: renderAdd };
 
@@ -27,26 +29,25 @@ var actions = {
     cookState.minutes = parseInt(d.minutes, 10);
     cookState.rejected = [];
     cookState.selected = null;
-    show("cook");
+    return show("cook");
   },
 
   skip: function (d) {
     if (cookState.rejected.indexOf(d.name) === -1) cookState.rejected.push(d.name);
-    show("cook");
+    return show("cook");
   },
   reset: function () { cookState.rejected = []; show("cook"); },
 
   "open-recipe": async function (d) {
-    var all = await api.recommend(cookState.minutes);
-    var recipe = all[parseInt(d.index, 10)];
+    var recipe = cookState.recipes[parseInt(d.index, 10)];
     if (!recipe) return;
     cookState.selected = recipe;
-    show("cook");
+    return show("cook");
   },
 
   "back-recipes": function () {
     cookState.selected = null;
-    show("cook");
+    return show("cook");
   },
 
   "confirm-cook": async function () {
@@ -87,24 +88,73 @@ var actions = {
     show("fridge");
   },
   "edit-grocery": function (d) {
-    fridgeViewState.editingGroceryName = d.name;
+    fridgeViewState.editingGroceryId = d.id;
     show("fridge");
   },
   "cancel-grocery": function () {
-    fridgeViewState.editingGroceryName = null;
+    fridgeViewState.editingGroceryId = null;
     show("fridge");
   },
-  "save-grocery": function (d) {
-    var form = document.querySelector("[data-grocery-name='" + d.name.replace(/'/g, "\\'") + "']");
-    var item = FRIDGE.find(function (entry) { return entry.name === d.name; });
-    if (!form || !item) return;
-    var quantity = Number(form.querySelector("[name='qty']").value);
-    if (!Number.isFinite(quantity) || quantity <= 0) return;
-    item.qty = quantity;
-    item.unit = form.querySelector("[name='unit']").value.trim();
-    fridgeViewState.editingGroceryName = null;
-    saveInventory();
+  "edit-expiry": function (d) {
+    fridgeViewState.editingExpiryId = d.id;
     show("fridge");
+  },
+  "cancel-expiry": function () {
+    fridgeViewState.editingExpiryId = null;
+    show("fridge");
+  },
+  "confirm-expiry": async function (d) {
+    var input = document.getElementById("expiry-edit-date");
+    var message = document.getElementById("expiry-edit-message");
+    if (!input || dateDayNumber(input.value) === null) {
+      if (message) message.textContent = "Choose a valid calendar date.";
+      return;
+    }
+    try {
+      await api.confirmExpiry(d.id, input.value);
+      fridgeViewState.editingExpiryId = null;
+      show("fridge", "Expiry date saved.");
+    } catch (error) {
+      if (message) message.textContent = error.message || "Could not save the expiry date.";
+    }
+  },
+  "save-grocery": async function (d) {
+    if (grocerySubmissionPending) return;
+    var form = document.querySelector(".grocery-edit-form");
+    if (!form) return;
+    var name = form.querySelector("[name='name']").value.trim();
+    var quantity = Number(form.querySelector("[name='qty']").value);
+    var unit = form.querySelector("[name='unit']").value.trim();
+    var expiry = form.querySelector("[name='expiry']").value;
+    var message = document.getElementById("grocery-edit-message");
+    if (!name || name.length > 120 || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000 ||
+        Math.abs(quantity * 100 - Math.round(quantity * 100)) > 0.000001 || unit.length > 40 ||
+        (expiry && dateDayNumber(expiry) === null)) {
+      message.textContent = "Enter a name, a positive quantity with up to two decimal places, and a valid date.";
+      return;
+    }
+    grocerySubmissionPending = true;
+    try {
+      await api.editGrocery(d.id, { name: name, quantity: quantity, unit: unit, expiry_date: expiry || null });
+      fridgeViewState.editingGroceryId = null;
+      await show("fridge", "Item saved.");
+    } catch (error) {
+      message.textContent = error.message || "Could not save this item.";
+    } finally {
+      grocerySubmissionPending = false;
+    }
+  },
+  "eat-grocery": async function (d) {
+    if (grocerySubmissionPending) return;
+    grocerySubmissionPending = true;
+    try {
+      await api.markEaten(d.id);
+      await show("fridge", "Item marked as eaten.");
+    } catch (error) {
+      await show("fridge", "Could not mark this item as eaten.");
+    } finally {
+      grocerySubmissionPending = false;
+    }
   },
 
   "cancel-add-edit": function () {
@@ -115,8 +165,12 @@ var actions = {
   },
 
   quick: async function (d) {
-    await api.scan(d.name, 1);
-    show("fridge", "Added 1 " + d.name + ".");
+    try {
+      await api.scan(d.name, 1);
+      show("fridge", "Added 1 " + d.name + ".");
+    } catch (error) {
+      show("add", error.message || "Could not add this item.");
+    }
   },
 
   sync: async function () {
@@ -188,7 +242,38 @@ var actions = {
       show("fridge", "Saved " + qty + " " + (unit || "serving") + " " + name + " as a leftover.");
       return;
     }
-    await api.scan(name, qty, unit);
+    var sourceInput = document.getElementById("add-expiry-source");
+    var dateInput = document.getElementById("add-expiry-date");
+    var confirmedInput = document.getElementById("printed-date-confirmed");
+    var expiryDateSource = sourceInput ? sourceInput.value : "unknown";
+    var expiryDate = dateInput ? dateInput.value : "";
+    var printedDateConfirmed = confirmedInput ? confirmedInput.checked : false;
+    if (expiryDate && expiryDateSource === "unknown") {
+      addManualMessage = "Choose Printed or Estimated for the date you entered.";
+      document.getElementById("manual-message").textContent = addManualMessage;
+      return;
+    }
+    if (expiryDate && expiryDateSource === "printed" && !printedDateConfirmed) {
+      addManualMessage = "Confirm that you checked the printed date on the package.";
+      document.getElementById("manual-message").textContent = addManualMessage;
+      return;
+    }
+    if (addExpiryEstimatePending) return;
+    addExpiryEstimatePending = true;
+    try {
+      if (!expiryDate) {
+        var estimate = await api.estimateExpiry(name);
+        expiryDate = estimate.expiry_date || "";
+        expiryDateSource = estimate.expiry_date_source || "unknown";
+      }
+      await api.scan(name, qty, unit, expiryDate, expiryDateSource, expiryDateSource === "printed" && printedDateConfirmed);
+    } catch (error) {
+      addManualMessage = error.message || "Could not add this item.";
+      document.getElementById("manual-message").textContent = addManualMessage;
+      return;
+    } finally {
+      addExpiryEstimatePending = false;
+    }
     addEditingItem = null;
     addSelectedKind = "grocery";
     addSelectedExistingId = null;
@@ -214,6 +299,12 @@ document.addEventListener("input", function (event) {
     return;
   }
   item[field] = event.target.value;
+});
+
+document.addEventListener("change", function (event) {
+  if (event.target.id !== "add-expiry-source") return;
+  var confirmation = document.getElementById("printed-date-confirmation");
+  if (confirmation) confirmation.hidden = event.target.value !== "printed";
 });
 
 window.addEventListener("error", function (e) {

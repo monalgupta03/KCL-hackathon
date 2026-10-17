@@ -1,5 +1,14 @@
 /backend/.env
+/backend/.env.*
 /backend/.venv/
+.env
+.env.*
+*.env
+*.pem
+*.crt
+*.key
+*.p12
+*.pfx
 __pycache__/
 *.pyc
 *.pyo

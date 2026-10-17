@@ -70,7 +70,7 @@ async function renderAdd() {
     "<button class='btn main big' data-action='use-photo' hidden>Use Photo</button></div>" +
     "<div id='scan-result' class='scan-result' hidden>" +
     "<p class='add-label'>REVIEW DETECTED ITEMS</p>" +
-    "<p class='scan-result-note'>Review each item, correct any mistakes, then add the confirmed ones to your fridge.</p>" +
+    "<p class='scan-result-note'>Review each item, correct any mistakes, then add the confirmed ones to your fridge. Estimates are freshness guidance, not verified food-safety dates.</p>" +
     "<div id='scan-result-items' class='scan-result-list'></div>" +
     "<button class='btn main big' data-action='confirm-detected-items' type='button'>Confirm & Add to Fridge</button>" +
     "</div></div></details>" +
@@ -94,6 +94,16 @@ async function renderAdd() {
     "<input id='add-qty' type='number' value='" + escapeAddText(editing ? editing.qty : "1") + "' min='0.1' step='0.1' inputmode='decimal'>" +
     "<label class='add-field-label' for='add-unit'>Unit</label>" +
     "<input id='add-unit' placeholder='e.g. pieces, grams, servings' value='" + escapeAddText(editing ? editing.unit || "" : "") + "'>" +
+    (selectedKind === "leftover" ? "" :
+      "<label class='add-field-label' for='add-expiry-source'>Expiry date source</label>" +
+      "<select id='add-expiry-source'><option value='unknown'>Unknown — no date</option>" +
+      "<option value='printed'>Printed on packaging</option>" +
+      "<option value='estimated'>Estimated freshness</option></select>" +
+      "<label class='add-field-label' for='add-expiry-date'>Expiry or freshness date</label>" +
+      "<input id='add-expiry-date' type='date'>" +
+      "<label id='printed-date-confirmation' class='expiry-confirmation' hidden>" +
+      "<input id='printed-date-confirmed' type='checkbox'>I checked this date on the package</label>" +
+      "<p class='small'>Enter printed dates from the package, or enter your own estimated freshness date. Estimates are guidance, not verified food-safety dates.</p>") +
     "<div id='leftover-fields' class='add-leftover-fields'" + (selectedKind === "leftover" ? "" : " hidden") + ">" +
     "<label class='add-field-label' for='add-prepared-at'>Prepared at (approximate)</label>" +
     "<input id='add-prepared-at' type='datetime-local' required value='" + escapeAddText(addDateTimeValue(editing ? editing.preparedAt : "")) + "'>" +
@@ -127,11 +137,15 @@ function renderDetectedScanItems() {
     var name = item.name || "";
     var quantity = item.quantity == null ? "" : item.quantity;
     var unit = item.unit || "";
+    var expiryNote = item.expiryDate
+      ? "<p class='scan-result-expiry'>" + escapeAddText((item.expiryDateSource === "printed" ? "Printed date detected" : "Estimated freshness guidance") + ": " + item.expiryDate) + "</p>"
+      : "<p class='scan-result-expiry'>Expiry unknown; freshness estimates are not food-safety dates.</p>";
     return "<div class='scan-result-item'>" +
       "<div class='scan-result-header'>" +
       "<span class='add-label'>" + escapeAddText((index + 1) + ".") + "</span>" +
       "<button class='scan-result-remove' type='button' data-action='remove-detected-item' data-index='" + index + "'>Remove</button>" +
       "</div>" +
+      expiryNote +
       "<div class='scan-result-item-row'>" +
       "<div><label class='add-field-label' for='scan-result-name-" + index + "'>Name</label><input id='scan-result-name-" + index + "' data-field='name' data-index='" + index + "' value='" + escapeAddText(name) + "' autocomplete='off'></div>" +
       "<div><label class='add-field-label' for='scan-result-quantity-" + index + "'>Qty</label><input id='scan-result-quantity-" + index + "' type='number' min='1' step='1' inputmode='numeric' data-field='quantity' data-index='" + index + "' value='" + escapeAddText(quantity) + "' placeholder='Unknown'></div>" +
@@ -170,7 +184,10 @@ async function confirmDetectedItems() {
     selected.push({
       name: name,
       quantity: quantity,
-      unit: String(item.unit || "").trim()
+      unit: String(item.unit || "").trim(),
+      expiryDate: item.expiryDate || "",
+      expiryDateSource: item.expiryDateSource || "unknown",
+      pendingItem: item
     });
   }
 
@@ -184,13 +201,24 @@ async function confirmDetectedItems() {
 
   try {
     for (var j = 0; j < selected.length; j++) {
-      await api.scan(selected[j].name, selected[j].quantity, selected[j].unit || "");
+      await api.scan(
+        selected[j].name,
+        selected[j].quantity,
+        selected[j].unit || "",
+        selected[j].expiryDate,
+        selected[j].expiryDateSource,
+        selected[j].expiryDateSource === "printed"
+      );
+      // Keep only unsaved items available if a later POST fails.
+      var savedIndex = addPendingScanItems.indexOf(selected[j].pendingItem);
+      if (savedIndex !== -1) addPendingScanItems.splice(savedIndex, 1);
     }
     addPendingScanItems = [];
     renderDetectedScanItems();
     resultPanel.hidden = true;
     show("fridge", selected.length + " item" + (selected.length === 1 ? "" : "s") + " added to your fridge!");
   } catch (error) {
+    renderDetectedScanItems();
     message.textContent = error && error.message ? error.message : "Could not add the detected items to your fridge.";
   } finally {
     addPendingScanSubmitting = false;
@@ -237,7 +265,9 @@ async function recognizeAddPhoto() {
       return {
         name: String(item.name).trim(),
         quantity: item.quantity == null ? null : Number(item.quantity),
-        unit: item.unit ? String(item.unit).trim() : ""
+        unit: item.unit ? String(item.unit).trim() : "",
+        expiryDate: item.expiry_date ? String(item.expiry_date) : "",
+        expiryDateSource: item.expiry_date_source || "unknown"
       };
     });
 

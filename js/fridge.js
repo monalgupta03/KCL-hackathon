@@ -1,4 +1,4 @@
-var fridgeViewState = { editingGroceryName: null };
+var fridgeViewState = { editingGroceryId: null, editingExpiryId: null };
 
 function escapeFridgeText(value) {
   return String(value).replace(/[&<>"']/g, function (character) {
@@ -12,7 +12,10 @@ function dateDayNumber(value) {
   if (parts.length !== 3) return null;
   var year = Number(parts[0]), month = Number(parts[1]), day = Number(parts[2]);
   if (!year || !month || !day) return null;
-  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+  var timestamp = Date.UTC(year, month - 1, day);
+  var parsed = new Date(timestamp);
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return null;
+  return Math.floor(timestamp / 86400000);
 }
 
 function currentDayNumber() {
@@ -25,19 +28,28 @@ function itemUseBy(item) {
 }
 
 function groceryUrgency(item) {
-  var useBy = itemUseBy(item);
-  if (dateDayNumber(useBy) !== null) return dateDayNumber(useBy) - currentDayNumber();
-  if (typeof item.days === "number" && Number.isFinite(item.days)) return item.days;
-  return Infinity;
+  var expiryDate = dateDayNumber(itemUseBy(item));
+  return expiryDate === null ? Infinity : expiryDate - currentDayNumber();
 }
 
-function groceryExpiryLabel(item) {
-  var useBy = itemUseBy(item);
-  if (dateDayNumber(useBy) !== null) return "Use-by " + formatFridgeDate(useBy);
-  if (typeof item.days === "number" && Number.isFinite(item.days)) {
-    return "Estimated · ~" + item.days + (item.days === 1 ? " day" : " days");
-  }
-  return "Date unknown";
+function groceryExpiryStatus(item) {
+  var expiryDate = dateDayNumber(itemUseBy(item));
+  var source = item.expiryDateSource || "unknown";
+  var sourceLabel = source === "printed" ? "Printed date" : source === "estimated"
+    ? item.expiryDateConfirmed ? "" : "Estimated"
+    : expiryDate === null ? "Unknown date" : "Source unknown";
+  if (expiryDate === null) return { text: "Expiry unknown — confirm", source: "Unknown date", state: "unknown", attention: true };
+
+  var daysUntilExpiry = expiryDate - currentDayNumber();
+  var text = daysUntilExpiry < 0 ? "Expired"
+    : daysUntilExpiry === 0 ? "Expires today"
+      : daysUntilExpiry <= 3 ? "Expires soon" : "Fresh";
+  return {
+    text: text,
+    source: sourceLabel,
+    state: daysUntilExpiry <= 3 ? "attention" : "fresh",
+    attention: daysUntilExpiry <= 3
+  };
 }
 
 function formatFridgeDate(value) {
@@ -48,6 +60,19 @@ function formatFridgeDate(value) {
 
 function groceryNeedsAttention(item) {
   return groceryUrgency(item) <= 3;
+}
+
+function groceryNeedsDateConfirmation(item) {
+  return dateDayNumber(itemUseBy(item)) === null;
+}
+
+function sortGroceriesByExpiry(items) {
+  return items.slice().sort(function (first, second) {
+    var firstExpiry = groceryUrgency(first), secondExpiry = groceryUrgency(second);
+    if (!Number.isFinite(firstExpiry)) return Number.isFinite(secondExpiry) ? 1 : 0;
+    if (!Number.isFinite(secondExpiry)) return -1;
+    return firstExpiry - secondExpiry;
+  });
 }
 
 function leftoverAttentionHours(leftover) {
@@ -142,22 +167,26 @@ function renderLeftoverCard(leftover) {
 
 function renderGroceryCard(item, editable) {
   var name = String(item.name);
-  var urgency = groceryUrgency(item);
+  var expiryStatus = groceryExpiryStatus(item);
   var quantity = item.qty + (item.unit ? " " + item.unit : "");
   var html = "<article class='grocery-card'><div class='fridge-card-heading'><span class='food-icon' aria-hidden='true'>" +
     foodIcon(name) + "</span><div class='fridge-card-title'><h4>" + escapeFridgeText(name) + "</h4>" +
     "<p>" + escapeFridgeText(quantity) + (item.location ? " · " + escapeFridgeText(item.location) : "") + "</p></div>" +
-    "<span class='expiry-label " + (urgency <= 3 ? "attention" : "") + "'>" + escapeFridgeText(groceryExpiryLabel(item)) + "</span></div>";
-  if (editable && fridgeViewState.editingGroceryName === name) {
-    html += "<form class='fridge-form grocery-edit-form' data-grocery-name='" + escapeFridgeText(name) + "'>" +
-      "<div class='fridge-form-grid'><label>Quantity<input name='qty' type='number' min='0.1' step='0.1' required value='" +
-      escapeFridgeText(item.qty) + "'></label><label>Unit<input name='unit' maxlength='20' value='" +
-      escapeFridgeText(item.unit || "") + "'></label></div><div class='fridge-form-actions'>" +
-      "<button class='btn main' type='button' data-action='save-grocery' data-name='" + escapeFridgeText(name) +
-      "'>Save changes</button><button class='btn' type='button' data-action='cancel-grocery'>Cancel</button></div></form>";
-  } else if (editable) {
-    html += "<div class='fridge-card-actions'><button class='text-action' data-action='edit-grocery' data-name='" +
-      escapeFridgeText(name) + "'>Edit</button></div>";
+    "<span class='expiry-label " + expiryStatus.state + "'><strong>" + escapeFridgeText(expiryStatus.text) +
+    "</strong>" + (expiryStatus.source ? "<small>" + escapeFridgeText(expiryStatus.source) + "</small>" : "") + "</span></div>";
+  if (editable && String(fridgeViewState.editingGroceryId) === String(item.id)) {
+    html += "<form class='fridge-form grocery-edit-form'>" +
+      "<div class='fridge-form-grid'><label>Name<input name='name' maxlength='120' required value='" + escapeFridgeText(name) + "'></label>" +
+      "<label>Quantity<input name='qty' type='number' min='0.01' max='1000000' step='0.01' required value='" + escapeFridgeText(item.qty) + "'></label>" +
+      "<label>Unit<input name='unit' maxlength='40' value='" + escapeFridgeText(item.unit || "") + "'></label>" +
+      "<label>Expiry or freshness date<input name='expiry' type='date' value='" + escapeFridgeText(itemUseBy(item)) + "'></label></div>" +
+      "<p>Saving confirms the entered date. Estimates are freshness guidance, not verified food-safety dates.</p>" +
+      "<p id='grocery-edit-message' role='status' aria-live='polite'></p><div class='fridge-form-actions'>" +
+      "<button class='btn main' type='button' data-action='save-grocery' data-id='" + escapeFridgeText(item.id) + "'>Save changes</button>" +
+      "<button class='btn' type='button' data-action='cancel-grocery'>Cancel</button></div></form>";
+  } else {
+    html += "<div class='fridge-card-actions'><button class='text-action' data-action='edit-grocery' data-id='" + escapeFridgeText(item.id) +
+      "'>Edit</button><button class='text-action' data-action='eat-grocery' data-id='" + escapeFridgeText(item.id) + "'>Mark as Eaten</button></div>";
   }
   return html + "</article>";
 }
@@ -180,11 +209,10 @@ function fridgeRecommendation(items, leftovers) {
 async function renderFridge() {
   var allItems = (await api.getInventory()).filter(function (item) { return item.qty > 0; });
   var leftovers = sortLeftovers(allItems.filter(function (item) { return item.category === "leftover"; }));
-  var items = allItems.filter(function (item) { return item.category !== "leftover"; });
-  items.sort(function (first, second) { return groceryUrgency(first) - groceryUrgency(second); });
+  var items = sortGroceriesByExpiry(allItems.filter(function (item) { return item.category !== "leftover"; }));
   var events = await api.getEvents();
   var soonItems = items.filter(groceryNeedsAttention);
-  var attentionCount = soonItems.length + leftovers.filter(leftoverNeedsAttention).length;
+  var attentionCount = soonItems.length + items.filter(groceryNeedsDateConfirmation).length + leftovers.filter(leftoverNeedsAttention).length;
   var html = "<section class='fridge-page'><div class='fridge-heading'><p class='fridge-eyebrow'>YOUR FOOD, AT A GLANCE</p>" +
     "<h2>My Kitchen</h2><p>Everything you have, without having to remember.</p></div>" +
     "<div class='kitchen-summary'><div><strong>" + items.length + "</strong><span>Groceries</span></div><div><strong>" +

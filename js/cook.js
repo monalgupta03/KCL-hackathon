@@ -1,5 +1,5 @@
-// Cook tab. Recommendations continue to come from the existing API/local scorer.
-var cookState = { minutes: 15, rejected: [], selected: null };
+// Cook tab. Meals come from FastAPI using the active TigerData pantry.
+var cookState = { minutes: 15, rejected: [], selected: null, recipes: [], requestKey: null };
 
 function escapeCookText(value) {
   return String(value).replace(/[&<>"']/g, function (character) {
@@ -8,6 +8,17 @@ function escapeCookText(value) {
 }
 
 function cookIngredients(recipe, inventory) {
+  if (Array.isArray(recipe.ingredients)) {
+    return recipe.ingredients.map(function (ingredient) {
+      var item = inventory.find(function (entry) {
+        return entry.name.toLowerCase() === ingredient.name.toLowerCase() &&
+          (entry.unit || "").toLowerCase() === ingredient.unit.toLowerCase();
+      });
+      return { name: ingredient.name, amount: ingredient.quantity,
+        unit: ingredient.unit ? " " + ingredient.unit : "", item: item,
+        missing: ingredient.missing_quantity || 0 };
+    });
+  }
   return Object.keys(recipe.needs || {}).map(function (name) {
     var item = inventory.find(function (entry) { return entry.name.toLowerCase() === name.toLowerCase(); });
     var unit = item && item.unit ? " " + item.unit : "";
@@ -17,14 +28,14 @@ function cookIngredients(recipe, inventory) {
 
 function cookSoonIngredient(recipe, inventory) {
   return cookIngredients(recipe, inventory).map(function (ingredient) {
-    return ingredient.item && Number(ingredient.item.days) <= 3 ? ingredient.item : null;
-  }).filter(Boolean).sort(function (a, b) { return Number(a.days) - Number(b.days); })[0] || null;
+    return ingredient.item && groceryUrgency(ingredient.item) >= 0 && groceryUrgency(ingredient.item) <= 3 ? ingredient.item : null;
+  }).filter(Boolean).sort(function (a, b) { return groceryUrgency(a) - groceryUrgency(b); })[0] || null;
 }
 
 function cookHeader(inventory) {
   var soon = inventory.filter(function (item) {
-    return item.qty > 0 && Number(item.days) <= 3;
-  }).sort(function (a, b) { return Number(a.days) - Number(b.days); })[0];
+    return item.qty > 0 && groceryUrgency(item) >= 0 && groceryUrgency(item) <= 3;
+  }).sort(function (a, b) { return groceryUrgency(a) - groceryUrgency(b); })[0];
   var html = "<section class='cook-page'><header class='cook-heading'>" +
     "<p class='cook-eyebrow'>A LITTLE HELP FROM YOUR FRIDGE</p>" +
     "<h2>What's cooking?</h2>" +
@@ -50,9 +61,16 @@ function cookTimeFilters() {
 
 function cookIngredientList(recipe, inventory) {
   return cookIngredients(recipe, inventory).map(function (ingredient) {
-    return "<li><span class='cook-check' aria-hidden='true'>✓</span><span>" +
+    return "<li><span class='cook-check' aria-hidden='true'>" + (ingredient.missing ? "＋" : "✓") + "</span><span>" +
       escapeCookText(ingredient.amount + ingredient.unit + " " + ingredient.name) + "</span></li>";
   }).join("");
+}
+
+function cookMissingIngredients(recipe) {
+  if (!recipe.missingIngredients || !recipe.missingIngredients.length) return "";
+  return "<p class='cook-reason'>Missing ingredients: " + escapeCookText(recipe.missingIngredients.map(function (item) {
+    return item.quantity + (item.unit ? " " + item.unit : "") + " " + item.name;
+  }).join(", ")) + "</p>";
 }
 
 function renderCookDetails(recipe, inventory) {
@@ -70,13 +88,21 @@ function renderCookDetails(recipe, inventory) {
     "<p class='cook-eyebrow'>YOUR NEXT MEAL</p><h3>" + escapeCookText(recipe.name) + "</h3>" +
     "<p class='cook-time'><span aria-hidden='true'>◷</span> About " + recipe.minutes + " minutes</p>" +
     "<h4>Ingredients</h4><ul class='cook-ingredients'>" + cookIngredientList(recipe, inventory) + "</ul>" +
+    cookMissingIngredients(recipe) +
+    "<p class='cook-reason'>" + escapeCookText(recipe.reason || "") + "</p>" +
     "<h4>Cooking steps</h4>" + steps +
     "<button class='btn main big cook-confirm' data-action='confirm-cook'>I cooked this</button></article></section>";
 }
 
 async function renderCook() {
-  var inventory = await api.getInventory();
-  inventory = Array.isArray(inventory) ? inventory.filter(function (item) { return item.qty > 0; }) : [];
+  var inventory;
+  try {
+    inventory = await api.getInventory();
+  } catch (error) {
+    return cookHeader([]) + cookTimeFilters() + "<p class='error'>Could not load your pantry. " +
+      escapeCookText(error.message || "Try again later.") + "</p></section>";
+  }
+  inventory = Array.isArray(inventory) ? inventory.filter(function (item) { return item.qty > 0 && item.category !== "leftover"; }) : [];
   if (!inventory.length) {
     return cookHeader(inventory) + "<section class='cook-empty card'><div aria-hidden='true'>🥬</div>" +
       "<h3>Your fridge is looking a little empty.</h3><p>Add a few groceries and we'll find something for you.</p>" +
@@ -85,14 +111,25 @@ async function renderCook() {
 
   if (cookState.selected) return renderCookDetails(cookState.selected, inventory);
 
-  var all = await api.recommend(cookState.minutes);
-  all = Array.isArray(all) ? all : [];
+  var requestKey = JSON.stringify([cookState.minutes, cookState.rejected, inventory]);
+  if (cookState.requestKey !== requestKey) {
+    try {
+      cookState.recipes = await api.recommend(cookState.minutes, cookState.rejected);
+      cookState.requestKey = requestKey;
+    } catch (error) {
+      cookState.recipes = [];
+      cookState.requestKey = null;
+      return cookHeader(inventory) + cookTimeFilters() + "<p class='error'>" +
+        escapeCookText(error.message || "Meal recommendations are unavailable. Try again later.") + "</p></section>";
+    }
+  }
+  var all = cookState.recipes;
   var available = all.filter(function (recipe) { return cookState.rejected.indexOf(recipe.name) === -1; });
   var html = cookHeader(inventory) + cookTimeFilters();
 
   if (!all.length) {
     html += "<section class='cook-empty card'><div aria-hidden='true'>⌕</div>" +
-      "<h3>No recipes fit this time</h3><p>Try a longer time, or add more groceries to your fridge.</p>" +
+      "<h3>No suitable meals available</h3><p>Check pantry freshness dates, add ingredients, or try a longer time.</p>" +
       "<button class='btn' data-action='tab' data-tab='add'>Add groceries</button></section>";
   } else if (!available.length) {
     html += "<section class='cook-empty card'><div aria-hidden='true'>✦</div>" +
@@ -104,7 +141,7 @@ async function renderCook() {
     var index = all.indexOf(recipe);
     var ingredients = cookIngredients(recipe, inventory);
     var soon = cookSoonIngredient(recipe, inventory);
-    var reason = recipe.reason || "A local match based on what's currently in your fridge.";
+    var reason = recipe.reason || "Based on your active pantry.";
     html += "<article class='cook-recipe card'><div class='cook-recipe-top'><div class='cook-recipe-mark' aria-hidden='true'>🍽</div>" +
       "<div class='cook-recipe-meta'><span class='cook-time'><span aria-hidden='true'>◷</span> " + recipe.minutes + " min</span>" +
       (soon ? "<span class='cook-use-soon'>Use soon: " + escapeCookText(soon.name) + "</span>" : "") +
@@ -113,7 +150,7 @@ async function renderCook() {
       ingredients.map(function (ingredient) {
         return escapeCookText(ingredient.amount + ingredient.unit + " " + ingredient.name);
       }).join(" · ") + "</p><p class='cook-reason'><span aria-hidden='true'>✦</span> " +
-      escapeCookText(reason) + "</p><div class='cook-recipe-actions'>" +
+      escapeCookText(reason) + "</p>" + cookMissingIngredients(recipe) + "<div class='cook-recipe-actions'>" +
       "<button class='btn main' data-action='open-recipe' data-index='" + index + "'>Cook this</button>" +
       "<button class='btn cook-skip' data-action='skip' data-name='" + escapeCookText(recipe.name) + "'>Not in the mood</button>" +
       "</div></article>";
