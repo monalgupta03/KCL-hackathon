@@ -12,7 +12,7 @@ function setup() {
     renderCook:()=>'', foodIcon:()=>'', saveInventory:()=>{}});
   for (const f of ['api', 'fridge', 'cook', 'add', 'app']) {
     let code = fs.readFileSync(`js/${f}.js`, 'utf8');
-    if (f === 'app') code = code.replace(/initializeDemoLeftover\(\);\s*show\("fridge"\);\s*$/, '');
+    if (f === 'app') code = code.replace(/\nshow\("fridge"\);\n/, '\n');
     vm.runInContext(code, c);
   }
   c.show = ()=>{};

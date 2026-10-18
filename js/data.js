@@ -1,11 +1,5 @@
-// Mock data. Edit the recipes here. Replace the fridge with real data via api.js later.
-var FRIDGE = [
-  { name: "spinach", qty: 1, unit: "bag",    days: 2 },
-  { name: "tomato",  qty: 2, unit: "",       days: 5 },
-  { name: "eggs",    qty: 4, unit: "",       days: 12 },
-  { name: "bread",   qty: 6, unit: "slices", days: 3 },
-  { name: "cheese",  qty: 1, unit: "block",  days: 9 }
-];
+// Groceries load from FastAPI; leftovers are stored on this browser.
+var FRIDGE = [];
 
 var INVENTORY_STORAGE_KEY = "fridgeflow.inventory";
 var DEMO_LEFTOVER_ID = "demo-leftover-pasta-v1";
@@ -48,8 +42,10 @@ function saveInventory() {
   try {
     localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(FRIDGE));
     localStorage.removeItem("fridgeflow.leftovers");
+    return true;
   } catch (error) {
-    console.warn("Could not save inventory in this browser.", error);
+    console.warn("Could not save inventory in this browser.");
+    return false;
   }
 }
 
@@ -94,7 +90,7 @@ function initializeDemoLeftover() {
   }
 }
 
-var EVENTS = ["Scanned: cheese", "Scanned: bread"];
+var EVENTS = [];
 
 var RECIPES = [
   { name: "Spinach and egg toast",     minutes: 12, needs: { spinach: 1, eggs: 2, bread: 2 } },

@@ -207,3 +207,65 @@ input { padding: 10px; font-size: 15px; border: 1px solid #aaa; width: 100%; mar
   .food-icon { width: 34px; height: 34px; }
   .freshness, .expiry-label { grid-column: 2; justify-self: start; max-width: 100%; margin-top: 1px; }
 }
+
+/* Final product polish: retain the green identity, with space for real screens. */
+body { background: #edf2ec; color: #26352b; -webkit-font-smoothing: antialiased; }
+#stage { min-height: 100dvh; padding: 20px; }
+#phone { width: min(100%, 1040px); height: calc(100dvh - 40px); border: 1px solid #d9e3d7; border-radius: 24px; box-shadow: 0 14px 50px rgba(34, 62, 42, .10); }
+#notch { display: none; }
+#phone > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 28px; font-size: 25px; letter-spacing: -.5px; }
+.brand-tagline { font-size: 12px; font-weight: normal; letter-spacing: 0; opacity: .9; }
+main { min-height: 0; padding: 24px; scrollbar-color: #c2d2bf transparent; }
+nav { flex-shrink: 0; border-color: #e0e7dc; padding-bottom: env(safe-area-inset-bottom); background: #fff; }
+nav button { min-height: 60px; border-top: 3px solid transparent; background: #f8faf6; transition: background .15s, color .15s; }
+nav button.active { border-top-color: #2e6b3a; }
+button { touch-action: manipulation; }
+button:disabled { opacity: .6; cursor: wait; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #91b18a; outline-offset: 3px; }
+input, select { min-width: 0; }
+[hidden] { display: none !important; }
+.add-page { max-width: 660px; margin: 0 auto; }
+.fridge-page, .cook-page { max-width: 920px; margin: 0 auto; }
+.fridge-card-title h4 { font-size: 15px; }
+.fridge-card-title p, .freshness, .expiry-label { font-size: 12px; }
+.expiry-label { cursor: default; max-width: 145px; }
+.expiry-label[data-action] { cursor: pointer; }
+.expiry-label small { font-size: 10px; }
+.text-action, .cook-back { min-height: 40px; font-size: 13px; }
+.scan-result-remove { min-height: 36px; padding: 5px 0; }
+.fridge-card-actions { gap: 20px; }
+.fridge-form label { font-size: 12px; }
+.fridge-form input, .add-section input { font-size: 16px; }
+.fridge-form-actions .btn { min-height: 42px; font-size: 13px; }
+.msg, .error { border-radius: 12px; margin-bottom: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.msg { border-color: #c8dfc4; color: #285435; }
+.cook-steps, .cook-ingredients li, .cook-ingredient-summary { font-size: 14px; }
+.cook-steps li { padding-left: 4px; margin-bottom: 10px; }
+.cook-reason { font-size: 12px; }
+.cook-recipe h3, .cook-detail h3 { overflow-wrap: anywhere; }
+.dietary-label { display: block; margin: 18px 0 7px; color: #526958; font-size: 12px; font-weight: bold; }
+#cook-dietary { width: 100%; max-width: 280px; padding: 11px 12px; border: 1px solid #d7e0d8; border-radius: 10px; background: #fff; color: #26352b; font: inherit; font-size: 14px; }
+.photo-upload { display: block; margin-top: 16px; color: #49644f; font-size: 13px; font-weight: bold; }
+.photo-upload input { display: block; margin-top: 8px; font-size: 13px; }
+.loading-state { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 180px; color: #4f6a51; font-size: 14px; }
+.loading-spinner { width: 22px; height: 22px; flex-shrink: 0; border: 2px solid #dce7d7; border-top-color: #2e6b3a; border-radius: 50%; animation: savourit-spin .8s linear infinite; }
+@keyframes savourit-spin { to { transform: rotate(360deg); } }
+@media (min-width: 760px) {
+  .cook-page { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 18px; }
+  .cook-page > :not(.cook-recipe) { grid-column: 1 / -1; }
+  .cook-recipe { display: flex; flex-direction: column; }
+  .cook-recipe-actions { margin-top: auto; padding-top: 16px; }
+  .fridge-section { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; }
+  .fridge-section-heading, .fridge-empty-inline, .fridge-empty { grid-column: 1 / -1; }
+  .grocery-card, .leftover-card { margin-bottom: 0; }
+}
+@media (max-width: 500px) {
+  #stage { padding: 0; }
+  #phone { height: 100dvh; width: 100%; border: 0; border-radius: 0; }
+  #phone > header { padding: 16px 18px; font-size: 23px; }
+  .brand-tagline { font-size: 11px; }
+  main { padding: 18px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

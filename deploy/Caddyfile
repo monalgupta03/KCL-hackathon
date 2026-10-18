@@ -1,0 +1,14 @@
+{$SITE_DOMAIN} {
+    basic_auth {
+        {$DEMO_USERNAME} {$DEMO_PASSWORD_HASH}
+    }
+
+    handle_path /api/* {
+        reverse_proxy backend:8000
+    }
+
+    handle {
+        root * /srv
+        file_server
+    }
+}

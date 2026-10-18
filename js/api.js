@@ -1,36 +1,70 @@
 // Every screen gets its data from here.
-// Inventory and meal recommendations use FastAPI; cooking remains local for now.
-var USE_MOCK = true;
+// Groceries and meals use FastAPI; leftovers are explicitly browser-local.
+var USE_MOCK = false;
 var USE_BACKEND_INVENTORY = true;
+var inventoryRequest = null;
+var inventoryGeneration = 0;
 var API_URL = "http://127.0.0.1:8000";
 
-async function inventoryResponse(response) {
-  var result = await response.json();
-  if (!response.ok) {
-    throw new Error(result.detail || "Inventory request failed.");
+// Bound network waits and turn validation/network failures into useful messages.
+async function apiFetch(url, options, timeoutMs) {
+  if (typeof AbortController === "undefined") return fetch(url, options);
+  var controller = new AbortController();
+  var timer = setTimeout(function () { controller.abort(); }, timeoutMs || 15000);
+  try {
+    return await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
+  } catch (error) {
+    throw new Error(error.name === "AbortError" ? "This is taking too long. Please try again." : "Cannot connect. Check that the app server is running.");
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function inventoryResponse(response) {
+  var result;
+  try { result = await response.json(); }
+  catch (error) { throw new Error("The server could not complete this request. Please try again."); }
+  if (!response.ok) {
+    var detail = result.detail;
+    if (Array.isArray(detail)) detail = "Please check your inputs: " + detail.map(function (entry) { return entry.msg; }).join("; ");
+    throw new Error(typeof detail === "string" ? detail : "This request could not be completed. Please try again.");
+  }
+  return result;
+}
+
+async function inventoryMutation(url, options) {
+  var result = await inventoryResponse(await apiFetch(url, options));
+  inventoryGeneration++;
+  inventoryRequest = null;
   return result;
 }
 
 var api = {
   getInventory: async function () {
     if (!USE_BACKEND_INVENTORY) return FRIDGE;
-    var result = await inventoryResponse(await fetch(API_URL + "/inventory"));
-    var items = result.map(function (item) {
-      return {
-        id: String(item.id),
-        name: item.name,
-        qty: Number(item.quantity),
-        unit: item.unit || "",
-        expiryDate: item.expiry_date || "",
-        expiryDateSource: item.expiry_date_source || "unknown",
-        expiryDateConfirmed: Boolean(item.expiry_date_confirmed),
-        category: "grocery"
-      };
-    });
-    var localLeftovers = FRIDGE.filter(function (item) { return item.category === "leftover"; });
-    FRIDGE = items.concat(localLeftovers);
-    return FRIDGE;
+    if (inventoryRequest) return inventoryRequest;
+    var generation = inventoryGeneration;
+    var request = inventoryRequest = (async function () {
+      var result = await inventoryResponse(await apiFetch(API_URL + "/inventory"));
+      var items = result.map(function (item) {
+        return {
+          id: String(item.id),
+          name: item.name,
+          qty: Number(item.quantity),
+          unit: item.unit || "",
+          expiryDate: item.expiry_date || "",
+          expiryDateSource: item.expiry_date_source || "unknown",
+          expiryDateConfirmed: Boolean(item.expiry_date_confirmed),
+          category: "grocery"
+        };
+      });
+      var localLeftovers = FRIDGE.filter(function (item) { return item.category === "leftover"; });
+      if (generation !== inventoryGeneration) return api.getInventory();
+      FRIDGE = items.concat(localLeftovers);
+      return FRIDGE;
+    }());
+    try { return await request; }
+    finally { if (inventoryRequest === request) inventoryRequest = null; }
   },
 
   getEvents: async function () {
@@ -39,7 +73,7 @@ var api = {
 
   estimateExpiry: async function (name) {
     try {
-      return await inventoryResponse(await fetch(API_URL + "/inventory/estimate-expiry", {
+      return await inventoryResponse(await apiFetch(API_URL + "/inventory/estimate-expiry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name })
@@ -67,7 +101,7 @@ var api = {
       saveInventory();
       return { ok: true };
     }
-    return inventoryResponse(await fetch(API_URL + "/inventory", {
+    return inventoryMutation(API_URL + "/inventory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -78,54 +112,59 @@ var api = {
         expiry_date_source: expiryDateSource || "unknown",
         expiry_date_confirmed: Boolean(expiryDateConfirmed)
       })
-    }));
+    });
   },
 
   editGrocery: async function (id, item) {
-    return inventoryResponse(await fetch(API_URL + "/inventory/" + encodeURIComponent(id), {
+    return inventoryMutation(API_URL + "/inventory/" + encodeURIComponent(id), {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item)
-    }));
+    });
   },
 
   markEaten: async function (id) {
-    return inventoryResponse(await fetch(API_URL + "/inventory/" + encodeURIComponent(id) + "/eaten", {
+    return inventoryMutation(API_URL + "/inventory/" + encodeURIComponent(id) + "/eaten", {
       method: "POST"
-    }));
+    });
   },
 
   confirmExpiry: async function (id, expiryDate) {
-    return inventoryResponse(await fetch(API_URL + "/inventory/" + encodeURIComponent(id) + "/expiry", {
+    return inventoryMutation(API_URL + "/inventory/" + encodeURIComponent(id) + "/expiry", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expiry_date: expiryDate })
-    }));
+    });
   },
 
   addInventoryItem: async function (item) {
-    var found = item.id && FRIDGE.find(function (entry) { return entry.id === item.id; });
+    var previous = FRIDGE.map(function (entry) { return Object.assign({}, entry); });
+    var found = item.id && FRIDGE.find(function (entry) { return entry.category === "leftover" && entry.id === item.id; });
     if (!found) {
-      found = FRIDGE.find(function (entry) { return entry.name.toLowerCase() === item.name.toLowerCase(); });
+      found = FRIDGE.find(function (entry) { return entry.category === "leftover" && entry.name.toLowerCase() === item.name.toLowerCase(); });
     }
     if (found) {
       Object.assign(found, item, { id: found.id || item.id });
     } else {
       FRIDGE.push(item);
     }
-    saveInventory();
+    if (!saveInventory()) {
+      FRIDGE = previous;
+      return { ok: false, message: "Browser storage is unavailable. This leftover was not saved." };
+    }
     return { ok: true, item: found || item };
   },
 
-  recommend: async function (minutes, rejectedMeals) {
-    var result = await inventoryResponse(await fetch(API_URL + "/meals/recommend", {
+  recommend: async function (minutes, rejectedMeals, dietaryRestrictions) {
+    var result = await inventoryResponse(await apiFetch(API_URL + "/meals/recommend", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minutes: minutes, rejected_meals: rejectedMeals || [] })
+      body: JSON.stringify({ minutes: minutes, rejected_meals: rejectedMeals || [], dietary_restrictions: dietaryRestrictions || [] })
     }));
     if (!result || !Array.isArray(result.recipes)) {
       throw new Error("Meal recommendations returned an unusable response.");
     }
-    return result.recipes.map(function (recipe) {
+    var recipes = result.recipes.map(function (recipe) {
       return {
+        source: result.source || "gemini",
         name: recipe.title,
         minutes: recipe.cooking_time_minutes,
         ingredients: recipe.ingredients,
@@ -138,27 +177,15 @@ var api = {
         }, {})
       };
     });
+    recipes.notice = result.notice || "";
+    recipes.source = result.source || "gemini";
+    return recipes;
   },
 
-  cook: async function (recipe) {
-    if (USE_MOCK) {
-      Object.keys(recipe.needs).forEach(function (item) {
-        var f = FRIDGE.find(function (i) { return i.name === item && i.category !== "leftover"; });
-        if (!f) f = FRIDGE.find(function (i) { return i.name === item; });
-        if (f) f.qty -= recipe.needs[item];
-      });
-      FRIDGE = FRIDGE.filter(function (i) { return i.qty > 0; });
-      EVENTS.unshift("Cooked: " + recipe.name);
-      saveInventory();
-      return { ok: true };
-    }
-    var res = await fetch(API_URL + "/cook", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipe: recipe.name })
-    });
-    return res.json();
+  cook: async function () {
+    throw new Error("Use Edit or Mark as Eaten in your pantry to update ingredients after cooking.");
   }
+
 };
 
 // Simple and explainable: keep recipes you can fully make in the time you have,

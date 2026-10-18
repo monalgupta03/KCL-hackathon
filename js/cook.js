@@ -1,5 +1,9 @@
 // Cook tab. Meals come from FastAPI using the active TigerData pantry.
-var cookState = { minutes: 15, rejected: [], selected: null, recipes: [], requestKey: null };
+var cookState = { minutes: 15, rejected: [], selected: null, recipes: [], requestKey: null, dietaryRestrictions: [] };
+
+var cookRequestId = 0;
+var cookMealCache = new Map();
+var cookPendingRequests = new Map();
 
 function escapeCookText(value) {
   return String(value).replace(/[&<>"']/g, function (character) {
@@ -56,7 +60,10 @@ function cookTimeFilters() {
       "' aria-pressed='" + (minutes === cookState.minutes) + "' data-action='time' data-minutes='" +
       minutes + "'>" + minutes + " min</button>";
   });
-  return html + "</div></div>";
+  return html + "</div><label class='dietary-label' for='cook-dietary'>Dietary preference</label><select id='cook-dietary'>" +
+    [["", "No preference"], ["vegetarian", "Vegetarian"], ["vegan", "Vegan"], ["dairy-free", "Dairy free"], ["gluten-free", "Gluten free"]].map(function (option) {
+      return "<option value='" + option[0] + "'" + ((cookState.dietaryRestrictions[0] || "") === option[0] ? " selected" : "") + ">" + option[1] + "</option>";
+    }).join("") + "</select></div>";
 }
 
 function cookIngredientList(recipe, inventory) {
@@ -85,16 +92,22 @@ function renderCookDetails(recipe, inventory) {
     "<article class='cook-detail card'><button class='cook-back' data-action='back-recipes'>" +
     "<span aria-hidden='true'>←</span> Back to ideas</button>" +
     "<div class='cook-detail-mark' aria-hidden='true'>🍳</div>" +
-    "<p class='cook-eyebrow'>YOUR NEXT MEAL</p><h3>" + escapeCookText(recipe.name) + "</h3>" +
+    "<p class='cook-eyebrow'>" + (recipe.source === "demo" ? "Demo mode · Predefined recipe" : "Gemini-generated meal") + "</p><h3>" + escapeCookText(recipe.name) + "</h3>" +
     "<p class='cook-time'><span aria-hidden='true'>◷</span> About " + recipe.minutes + " minutes</p>" +
     "<h4>Ingredients</h4><ul class='cook-ingredients'>" + cookIngredientList(recipe, inventory) + "</ul>" +
     cookMissingIngredients(recipe) +
     "<p class='cook-reason'>" + escapeCookText(recipe.reason || "") + "</p>" +
     "<h4>Cooking steps</h4>" + steps +
-    "<button class='btn main big cook-confirm' data-action='confirm-cook'>I cooked this</button></article></section>";
+    "<p class='small'>After cooking, use Edit or Mark as Eaten in your pantry to update what remains.</p>" +
+    "<button class='btn main big cook-confirm' data-action='tab' data-tab='fridge'>Back to pantry</button></article></section>";
 }
 
 async function renderCook() {
+  var renderId = ++cookRequestId;
+  var minutes = cookState.minutes;
+  var rejected = cookState.rejected.slice();
+  var dietary = cookState.dietaryRestrictions.slice();
+  if (cookState.selected) return renderCookDetails(cookState.selected, FRIDGE);
   var inventory;
   try {
     inventory = await api.getInventory();
@@ -102,6 +115,7 @@ async function renderCook() {
     return cookHeader([]) + cookTimeFilters() + "<p class='error'>Could not load your pantry. " +
       escapeCookText(error.message || "Try again later.") + "</p></section>";
   }
+  if (renderId !== cookRequestId) return "";
   inventory = Array.isArray(inventory) ? inventory.filter(function (item) { return item.qty > 0 && item.category !== "leftover"; }) : [];
   if (!inventory.length) {
     return cookHeader(inventory) + "<section class='cook-empty card'><div aria-hidden='true'>🥬</div>" +
@@ -111,17 +125,32 @@ async function renderCook() {
 
   if (cookState.selected) return renderCookDetails(cookState.selected, inventory);
 
-  var requestKey = JSON.stringify([cookState.minutes, cookState.rejected, inventory]);
-  if (cookState.requestKey !== requestKey) {
-    try {
-      cookState.recipes = await api.recommend(cookState.minutes, cookState.rejected);
-      cookState.requestKey = requestKey;
-    } catch (error) {
-      cookState.recipes = [];
-      cookState.requestKey = null;
-      return cookHeader(inventory) + cookTimeFilters() + "<p class='error'>" +
-        escapeCookText(error.message || "Meal recommendations are unavailable. Try again later.") + "</p></section>";
+  var requestKey = JSON.stringify([minutes, rejected, dietary, inventory, currentDayNumber()]);
+  try {
+    var cached = cookMealCache.get(requestKey);
+    var recipes;
+    if (cached && Date.now() - cached.savedAt < (cached.recipes.source === "demo" ? 60000 : 300000)) {
+      recipes = cached.recipes;
+    } else {
+      if (!cookPendingRequests.has(requestKey)) {
+        var pending = api.recommend(minutes, rejected, dietary).then(function (result) {
+          cookMealCache.set(requestKey, { recipes: result, savedAt: Date.now() });
+          if (cookMealCache.size > 6) cookMealCache.delete(cookMealCache.keys().next().value);
+          return result;
+        }).finally(function () { cookPendingRequests.delete(requestKey); });
+        cookPendingRequests.set(requestKey, pending);
+      }
+      recipes = await cookPendingRequests.get(requestKey);
     }
+    if (renderId !== cookRequestId) return "";
+    cookState.recipes = recipes;
+    cookState.requestKey = requestKey;
+  } catch (error) {
+    if (renderId !== cookRequestId) return "";
+    cookState.recipes = [];
+    cookState.requestKey = null;
+    return cookHeader(inventory) + cookTimeFilters() + "<p class='error'>" +
+      escapeCookText(error.message || "Meal recommendations are unavailable. Try again later.") + "</p></section>";
   }
   var all = cookState.recipes;
   var available = all.filter(function (recipe) { return cookState.rejected.indexOf(recipe.name) === -1; });
@@ -129,7 +158,8 @@ async function renderCook() {
 
   if (!all.length) {
     html += "<section class='cook-empty card'><div aria-hidden='true'>⌕</div>" +
-      "<h3>No suitable meals available</h3><p>Check pantry freshness dates, add ingredients, or try a longer time.</p>" +
+      (all.source === "demo" ? "<p class='cook-label'>Demo mode</p>" : "") +
+      "<h3>No suitable meals available</h3><p>" + (all.source === "demo" ? "No demo recipes fit these preferences and pantry quantities. Try another preference or add ingredients." : "Check pantry freshness dates, add ingredients, or try a longer time.") + "</p>" +
       "<button class='btn' data-action='tab' data-tab='add'>Add groceries</button></section>";
   } else if (!available.length) {
     html += "<section class='cook-empty card'><div aria-hidden='true'>✦</div>" +
@@ -145,7 +175,7 @@ async function renderCook() {
     html += "<article class='cook-recipe card'><div class='cook-recipe-top'><div class='cook-recipe-mark' aria-hidden='true'>🍽</div>" +
       "<div class='cook-recipe-meta'><span class='cook-time'><span aria-hidden='true'>◷</span> " + recipe.minutes + " min</span>" +
       (soon ? "<span class='cook-use-soon'>Use soon: " + escapeCookText(soon.name) + "</span>" : "") +
-      "</div></div><h3>" + escapeCookText(recipe.name) + "</h3>" +
+      "</div></div><p class='cook-label'>" + (recipe.source === "demo" ? "Demo mode · Predefined recipe" : "Gemini-generated meal") + "</p><h3>" + escapeCookText(recipe.name) + "</h3>" +
       "<p class='cook-label'>INGREDIENTS YOU'LL USE</p><p class='cook-ingredient-summary'>" +
       ingredients.map(function (ingredient) {
         return escapeCookText(ingredient.amount + ingredient.unit + " " + ingredient.name);

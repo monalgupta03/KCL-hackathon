@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FridgeFlow</title>
+  <title>SavourIt - Make the most of your food</title>
+  <meta name="theme-color" content="#2e6b3a">
+  <meta name="description" content="Keep track of your groceries, use food before it goes to waste, and find meals from your pantry.">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="stage">
     <div id="phone">
       <div id="notch"></div>
-      <header>FridgeFlow</header>
-      <main id="view"></main>
-      <nav>
-        <button data-action="tab" data-tab="fridge" class="active">Fridge</button>
+      <header>SavourIt <span class="brand-tagline">Good food. Less waste.</span></header>
+      <main id="view" aria-label="SavourIt content"></main>
+      <nav aria-label="Main navigation">
+        <button data-action="tab" data-tab="fridge" class="active">Pantry</button>
         <button data-action="tab" data-tab="cook">Cook</button>
         <button data-action="tab" data-tab="add">Add</button>
       </nav>

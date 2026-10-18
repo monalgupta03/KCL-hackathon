@@ -7,6 +7,8 @@ var addSelectedExistingId = null;
 var addManualMessage = "";
 var addPendingScanItems = [];
 var addPendingScanSubmitting = false;
+var addPhotoRecognizing = false;
+var addPhotoRequest = 0;
 
 function escapeAddText(value) {
   return String(value).replace(/[&<>"']/g, function (character) {
@@ -23,7 +25,7 @@ function addDateTimeValue(value) {
 
 function existingLeftoverPicker() {
   if (!addDetectedItems.length) return "";
-  return "<label class='add-field-label' for='leftover-existing'>Already in your inventory?</label>" +
+  return "<label class='add-field-label' for='leftover-existing'>Existing leftovers on this browser</label>" +
     "<select id='leftover-existing'><option value=''>Add a new leftover</option>" +
     addDetectedItems.map(function (item, index) {
       return "<option value='" + index + "'>" + escapeAddText(item.name + " · " + item.qty + (item.unit ? " " + item.unit : "")) + "</option>";
@@ -37,21 +39,19 @@ async function renderAdd() {
   addDetectedItems = [];
   if (selectedKind === "leftover") {
     try {
-      addDetectedItems = (await api.getInventory()).filter(function (item) { return item.category !== "leftover"; });
+      addDetectedItems = (await api.getInventory()).filter(function (item) { return item.category === "leftover"; });
     } catch (error) {
       addDetectedItems = [];
     }
   }
   var html = "<section class='add-page'>" +
     "<div class='add-heading'><p class='add-eyebrow'>YOUR INVENTORY</p>" +
-    "<h2>Add to your fridge</h2><p>Keep everything in one easy place.</p></div>" +
+    "<h2>Add groceries</h2><p>Keep everything in one easy place.</p></div>" +
     "<section class='smart-card' aria-labelledby='smart-fridge-title'>" +
     "<div class='smart-icon' aria-hidden='true'>❄</div>" +
     "<div class='smart-copy'><p class='add-eyebrow'>AUTOMATIC INVENTORY</p>" +
     "<h3 id='smart-fridge-title'>Smart Fridge</h3>" +
     "<p>Your fridge automatically tracks what goes in.</p></div>" +
-    "<div class='smart-status'><span class='status-dot'></span>" +
-    (USE_MOCK ? "Not connected · demo inventory" : "Backend configured · hardware status unknown") + "</div>" +
     "<button class='btn main big add-sync' data-action='sync'>Sync from Fridge</button>" +
     "<p id='sync-message' class='add-feedback' role='status' aria-live='polite'></p></section>" +
     "<details id='scan-details' class='add-section'>" +
@@ -68,13 +68,14 @@ async function renderAdd() {
     "<button class='btn main big' data-action='capture' hidden>Capture</button>" +
     "<button class='btn big' data-action='retake' hidden>Retake</button>" +
     "<button class='btn main big' data-action='use-photo' hidden>Use Photo</button></div>" +
+    "<label class='photo-upload' for='grocery-photo-upload'>Or choose a photo<input id='grocery-photo-upload' type='file' accept='image/jpeg,image/png'></label>" +
     "<div id='scan-result' class='scan-result' hidden>" +
     "<p class='add-label'>REVIEW DETECTED ITEMS</p>" +
     "<p class='scan-result-note'>Review each item, correct any mistakes, then add the confirmed ones to your fridge. Estimates are freshness guidance, not verified food-safety dates.</p>" +
     "<div id='scan-result-items' class='scan-result-list'></div>" +
     "<button class='btn main big' data-action='confirm-detected-items' type='button'>Confirm & Add to Fridge</button>" +
     "</div></div></details>" +
-    "<details class='add-section'" + (selectedKind === "leftover" ? " open" : "") + ">" +
+    "<details class='add-section' open>" +
     "<summary><span class='section-icon' aria-hidden='true'>＋</span>" +
     "<span class='section-title'><strong>Add Manually</strong>" +
     "<small>Add an item or correct something that was missed.</small></span></summary>" +
@@ -86,25 +87,26 @@ async function renderAdd() {
 
   html += "</div><p class='add-label'>ITEM DETAILS</p>" +
     "<label class='add-field-label' for='add-name'>Item name</label>" +
-    "<input id='add-name' placeholder='e.g. mushrooms' autocomplete='off' value='" + escapeAddText(editing ? editing.name : "") + "'>" +
+    "<input id='add-name' placeholder='e.g. mushrooms' autocomplete='off' maxlength='120' value='" + escapeAddText(editing ? editing.name : "") + "'>" +
     "<label class='add-field-label' for='add-kind'>Category</label><select id='add-kind' class='add-kind-select'>" +
     "<option value='grocery'" + (selectedKind === "grocery" ? " selected" : "") + ">Grocery</option>" +
     "<option value='leftover'" + (selectedKind === "leftover" ? " selected" : "") + ">Leftover</option></select>" +
     "<label class='add-field-label' for='add-qty'>Quantity</label>" +
-    "<input id='add-qty' type='number' value='" + escapeAddText(editing ? editing.qty : "1") + "' min='0.1' step='0.1' inputmode='decimal'>" +
+    "<input id='add-qty' type='number' value='" + escapeAddText(editing ? editing.qty : "1") + "' min='0.01' max='1000000' step='0.01' inputmode='decimal'>" +
     "<label class='add-field-label' for='add-unit'>Unit</label>" +
-    "<input id='add-unit' placeholder='e.g. pieces, grams, servings' value='" + escapeAddText(editing ? editing.unit || "" : "") + "'>" +
-    (selectedKind === "leftover" ? "" :
+    "<input id='add-unit' maxlength='40' placeholder='e.g. pieces, grams, servings' value='" + escapeAddText(editing ? editing.unit || "" : "") + "'>" +
+    "<div id='grocery-expiry-fields'" + (selectedKind === "leftover" ? " hidden" : "") + ">" +
       "<label class='add-field-label' for='add-expiry-source'>Expiry date source</label>" +
-      "<select id='add-expiry-source'><option value='unknown'>Unknown — no date</option>" +
+      "<select id='add-expiry-source'><option value='unknown'>Unknown - no date</option>" +
       "<option value='printed'>Printed on packaging</option>" +
       "<option value='estimated'>Estimated freshness</option></select>" +
       "<label class='add-field-label' for='add-expiry-date'>Expiry or freshness date</label>" +
       "<input id='add-expiry-date' type='date'>" +
       "<label id='printed-date-confirmation' class='expiry-confirmation' hidden>" +
       "<input id='printed-date-confirmed' type='checkbox'>I checked this date on the package</label>" +
-      "<p class='small'>Enter printed dates from the package, or enter your own estimated freshness date. Estimates are guidance, not verified food-safety dates.</p>") +
+      "<p class='small'>Enter printed dates from the package, or enter your own estimated freshness date. Estimates are guidance, not verified food-safety dates.</p></div>" +
     "<div id='leftover-fields' class='add-leftover-fields'" + (selectedKind === "leftover" ? "" : " hidden") + ">" +
+    "<p class='small'>Leftovers are saved on this browser only.</p>" +
     "<label class='add-field-label' for='add-prepared-at'>Prepared at (approximate)</label>" +
     "<input id='add-prepared-at' type='datetime-local' required value='" + escapeAddText(addDateTimeValue(editing ? editing.preparedAt : "")) + "'>" +
     "<label class='add-field-label' for='add-location'>Storage location</label><select id='add-location'>" +
@@ -157,8 +159,8 @@ function renderDetectedScanItems() {
 
 function parseDetectedQuantity(value) {
   var parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return Math.round(parsed);
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 1000000) return null;
+  return parsed;
 }
 
 async function confirmDetectedItems() {
@@ -226,6 +228,7 @@ async function confirmDetectedItems() {
 }
 
 async function recognizeAddPhoto() {
+  if (addPhotoRecognizing || addPendingScanSubmitting) return;
   var message = document.getElementById("camera-message");
   var photo = document.getElementById("camera-photo");
   var resultPanel = document.getElementById("scan-result");
@@ -236,7 +239,8 @@ async function recognizeAddPhoto() {
     return;
   }
 
-  addPendingScanSubmitting = false;
+  addPhotoRecognizing = true;
+  var requestId = ++addPhotoRequest;
   resultPanel.hidden = true;
   usePhotoButton.disabled = true;
   message.textContent = "Identifying items...";
@@ -247,11 +251,12 @@ async function recognizeAddPhoto() {
     var formData = new FormData();
     formData.append("image", imageBlob, "capture.jpg");
 
-    var response = await fetch("http://127.0.0.1:8000/scan", {
+    var response = await apiFetch(API_URL + "/scan", {
       method: "POST",
       body: formData
-    });
+    }, 20000);
     var result = await response.json();
+    if (requestId !== addPhotoRequest) return;
     if (!response.ok) {
       throw new Error(result.detail || "Gemini could not identify this image.");
     }
@@ -283,12 +288,14 @@ async function recognizeAddPhoto() {
       ? "Gemini found one item. Review and confirm it before adding it to your fridge."
       : "Gemini found " + addPendingScanItems.length + " items. Review and confirm them before adding to your fridge.";
   } catch (error) {
+    if (requestId !== addPhotoRequest) return;
     addPendingScanItems = [];
     renderDetectedScanItems();
     message.textContent = error instanceof TypeError
       ? "Cannot reach the backend. Check that FastAPI is running."
       : error.message;
   } finally {
+    addPhotoRecognizing = false;
     usePhotoButton.disabled = false;
   }
 }
@@ -361,6 +368,10 @@ function captureAddPhoto() {
 }
 
 async function retakeAddPhoto() {
+  addPhotoRequest += 1;
+  addPendingScanItems = [];
+  var panel = document.getElementById("scan-result");
+  if (panel) panel.hidden = true;
   document.getElementById("camera-photo").hidden = true;
   document.querySelector("[data-action='retake']").hidden = true;
   document.querySelector("[data-action='use-photo']").hidden = true;
@@ -374,6 +385,7 @@ async function retakeAddPhoto() {
 
 function stopAddCamera() {
   addCameraRequest += 1;
+  addPhotoRequest += 1;
   if (addCameraStream) {
     addCameraStream.getTracks().forEach(function (track) { track.stop(); });
     addCameraStream = null;
@@ -404,11 +416,12 @@ document.addEventListener("change", async function (event) {
   if (event.target.id === "add-kind") {
     addSelectedKind = event.target.value;
     document.getElementById("leftover-fields").hidden = addSelectedKind !== "leftover";
+    document.getElementById("grocery-expiry-fields").hidden = addSelectedKind === "leftover";
     document.getElementById("leftover-existing-container").hidden = addSelectedKind !== "leftover";
     addSelectedExistingId = null;
     if (addSelectedKind === "leftover" && !addDetectedItems.length) {
       try {
-        addDetectedItems = (await api.getInventory()).filter(function (item) { return item.category !== "leftover"; });
+        addDetectedItems = (await api.getInventory()).filter(function (item) { return item.category === "leftover"; });
         document.getElementById("leftover-existing-container").innerHTML = existingLeftoverPicker();
       } catch (error) {
         addDetectedItems = [];
@@ -427,4 +440,33 @@ document.addEventListener("change", async function (event) {
       document.getElementById("add-location").value = selected.location || "";
     }
   }
+});
+
+document.addEventListener("change", function (event) {
+  if (event.target.id !== "grocery-photo-upload") return;
+  var file = event.target.files && event.target.files[0];
+  var message = document.getElementById("camera-message");
+  if (!file) return;
+  if (!["image/jpeg", "image/png"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+    message.textContent = "Choose a JPEG or PNG photo up to 5 MB.";
+    event.target.value = "";
+    return;
+  }
+  stopAddCamera();
+  var requestId = ++addPhotoRequest;
+  var reader = new FileReader();
+  reader.onload = function () {
+    if (requestId !== addPhotoRequest) return;
+    var photo = document.getElementById("camera-photo");
+    if (!photo) return;
+    photo.src = reader.result;
+    photo.hidden = false;
+    document.getElementById("camera-placeholder").hidden = true;
+    document.querySelector("[data-action='use-photo']").hidden = false;
+    addPendingScanItems = [];
+    document.getElementById("scan-result").hidden = true;
+    message.textContent = "Photo ready. Choose Use Photo to identify groceries.";
+  };
+  reader.onerror = function () { message.textContent = "Could not read this photo. Please choose another."; };
+  reader.readAsDataURL(file);
 });

@@ -151,6 +151,24 @@ class ExpiryTests(unittest.TestCase):
         self.assertEqual(self.client.post('/inventory/999/eaten').status_code, 404)
         self.generate.assert_not_called()
 
+    def test_unchanged_estimated_date_is_confirmed_by_existing_edit_and_persists(self):
+        item = self.save({'expiry_date': '2026-10-21', 'expiry_date_source': 'estimated'})
+        self.assertFalse(item['expiry_date_confirmed'])
+        response = self.client.patch(f"/inventory/{item['id']}", json={
+            'name': item['name'], 'quantity': item['quantity'], 'unit': item['unit'], 'expiry_date': item['expiry_date']
+        })
+        self.assertEqual(response.status_code, 200)
+        update_sql = next(call.args[0] for call in self.db.return_value.__enter__.return_value.execute.call_args_list if 'SET name = %s' in call.args[0])
+        self.assertIn('expiry_date_confirmed = (%s::date IS NOT NULL)', update_sql)
+        self.assertIn("ELSE expiry_date_source END", update_sql)
+        for _ in range(2):
+            refreshed = self.client.get('/inventory').json()[0]
+            self.assertEqual(refreshed['expiry_date'], '2026-10-21')
+            self.assertEqual(refreshed['expiry_date_source'], 'estimated')
+            self.assertTrue(refreshed['expiry_date_confirmed'])
+        self.assertEqual(len(self.events), 1)  # Confirmation does not add or consume stock.
+        self.generate.assert_not_called()
+
     def test_edit_validation_and_clear_expiry(self):
         item = self.save({'expiry_date': '2026-10-20', 'expiry_date_source': 'estimated'})
         path = f"/inventory/{item['id']}"

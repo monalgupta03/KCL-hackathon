@@ -15,7 +15,7 @@ function setup(scenario) {
     window:{addEventListener:()=>{}},localStorage:{getItem:()=>JSON.stringify([{name:'STALE LOCAL SPINACH',qty:999}]),setItem:()=>{},removeItem:()=>{}}});
   for(const name of ['data','api','fridge','cook','add','app']) {
     let code=fs.readFileSync(path.join(root,`js/${name}.js`),'utf8');
-    if(name==='app')code=code.replace(/initializeDemoLeftover\(\);\s*show\("fridge"\);\s*$/, '');
+    if(name==='app')code=code.replace(/\nshow\("fridge"\);\n/, '\n');
     vm.runInContext(code,c);
   }
   c.fetch=async(url,o={})=>{
@@ -40,6 +40,8 @@ for(const minutes of [5,15,30]) {
     const meals=calls.filter(x=>x.request.path==='/meals/recommend');
     assert.equal(meals.length,1);assert.equal(meals[0].request.body.minutes,minutes);
     assert.equal(meals[0].result.gemini_calls,1);
+    assert.match(view.innerHTML,/Gemini-generated meal/);
+    assert.doesNotMatch(view.innerHTML,/Demo mode/);
     assert.equal(meals[0].result.body.recipes[0].ingredients[0].name,'spinach');
     for(const recipe of meals[0].result.body.recipes) {
       assert.ok(recipe.cooking_time_minutes<=minutes);
@@ -55,13 +57,20 @@ for(const minutes of [5,15,30]) {
     assert.equal(calls.filter(x=>x.request.path==='/meals/recommend').length,1);
   });
 }
-for(const scenario of ['quota','malformed','overlimit']) {
-  test(`${scenario} displays an error rather than a false no-recipes message`,async()=>{
-    const {c,view}=setup(scenario);
-    await c.actions.time({minutes:'5'});
-    assert.match(view.innerHTML,/class='error'/);
-    assert.doesNotMatch(view.innerHTML,/No recipes fit|No suitable meals/);
-    if(scenario==='quota')assert.match(view.innerHTML,/quota.*Try again later/);
+for(const scenario of ['quota','malformed','overlimit','unavailable']) {
+  for(const minutes of [5,15,30]) test(`${scenario} renders feasible Demo mode cards and instructions at ${minutes} minutes`,async()=>{
+    const {c,calls,view}=setup(scenario);
+    await c.actions.time({minutes:String(minutes)});
+    assert.equal((view.innerHTML.match(/class='cook-recipe card'/g)||[]).length,2);
+    assert.match(view.innerHTML,/Demo mode/);
+    assert.doesNotMatch(view.innerHTML,/No recipes fit|No suitable meals|Gemini-generated meal/);
+    assert.ok(c.cookState.recipes.every(recipe=>recipe.minutes<=minutes && recipe.missingIngredients.length===0));
+    await c.actions['open-recipe']({index:'0'});
+    assert.match(view.innerHTML,/Demo mode.*Predefined recipe/);
+    assert.match(view.innerHTML,/Cooking steps/);
+    assert.doesNotMatch(view.innerHTML,/Cooking steps aren't available/);
+    assert.equal(calls.filter(x=>x.request.path==='/meals/recommend').length,1);
+    if(scenario==='quota')assert.match(calls[1].result.body.notice,/quota/);
   });
 }
 test('missing quantities are shown on cards and details',async()=>{
@@ -88,4 +97,28 @@ test('switching 5/15/30 in one session sends each limit and replaces the rendere
 test('past-dated food is not promoted in the Cook header',()=>{
   const {c}=setup();
   assert.doesNotMatch(c.cookHeader([{name:'expired milk',qty:1,expiryDate:'2000-01-01'}]),/expired milk/);
+});
+test('urgency message follows the actual earliest eligible ingredient',()=>{
+  const {c}=setup();
+  const dateAfter=days=>{const d=new Date();d.setDate(d.getDate()+days);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
+  const html=c.cookHeader([{name:'spinach',qty:200,expiryDate:dateAfter(3)},{name:'mushrooms',qty:200,expiryDate:dateAfter(1)}]);
+  assert.match(html,/Your mushrooms needs using soon/);
+  assert.doesNotMatch(html,/Your spinach/);
+});
+test('dietary restrictions reach the backend and filter demo meals',async()=>{
+  const {c,calls,view}=setup('quota');
+  c.cookState.dietaryRestrictions=['vegan','gluten-free'];
+  await c.actions.time({minutes:'30'});
+  assert.match(view.innerHTML,/Demo mode/);
+  assert.ok(c.cookState.recipes.length>0);
+  for(const recipe of c.cookState.recipes) assert.ok(recipe.ingredients.every(i=>!['eggs','milk','cheese','pasta'].includes(i.name)));
+  assert.equal(calls[1].request.body.dietary_restrictions.join(','),'vegan,gluten-free');
+});
+test('unsupported dietary restrictions give an honest empty demo state',async()=>{
+  const {c,view}=setup('quota');
+  c.cookState.dietaryRestrictions=['unrecognised medical restriction'];
+  await c.actions.time({minutes:'15'});
+  assert.match(view.innerHTML,/Demo mode/);
+  assert.match(view.innerHTML,/No demo recipes fit/);
+  assert.equal(c.cookState.recipes.length,0);
 });

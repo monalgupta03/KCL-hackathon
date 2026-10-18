@@ -36,14 +36,14 @@ function groceryExpiryStatus(item) {
   var expiryDate = dateDayNumber(itemUseBy(item));
   var source = item.expiryDateSource || "unknown";
   var sourceLabel = source === "printed" ? "Printed date" : source === "estimated"
-    ? item.expiryDateConfirmed ? "" : "Estimated"
+    ? item.expiryDateConfirmed ? "Confirmed" : "Estimated"
     : expiryDate === null ? "Unknown date" : "Source unknown";
-  if (expiryDate === null) return { text: "Expiry unknown — confirm", source: "Unknown date", state: "unknown", attention: true };
+  if (expiryDate === null) return { text: "Date unknown", source: "Unknown date", state: "unknown", attention: true };
 
   var daysUntilExpiry = expiryDate - currentDayNumber();
-  var text = daysUntilExpiry < 0 ? "Expired"
+  var text = daysUntilExpiry < 0 ? "Date passed"
     : daysUntilExpiry === 0 ? "Expires today"
-      : daysUntilExpiry <= 3 ? "Expires soon" : "Fresh";
+      : daysUntilExpiry <= 3 ? "Use soon" : "Use by " + formatFridgeDate(itemUseBy(item));
   return {
     text: text,
     source: sourceLabel,
@@ -168,12 +168,14 @@ function renderLeftoverCard(leftover) {
 function renderGroceryCard(item, editable) {
   var name = String(item.name);
   var expiryStatus = groceryExpiryStatus(item);
+  var expiryClickable = item.expiryDateSource === "estimated" && !item.expiryDateConfirmed && dateDayNumber(itemUseBy(item)) !== null;
+  var expiryTag = expiryClickable ? "button" : "span";
   var quantity = item.qty + (item.unit ? " " + item.unit : "");
   var html = "<article class='grocery-card'><div class='fridge-card-heading'><span class='food-icon' aria-hidden='true'>" +
     foodIcon(name) + "</span><div class='fridge-card-title'><h4>" + escapeFridgeText(name) + "</h4>" +
     "<p>" + escapeFridgeText(quantity) + (item.location ? " · " + escapeFridgeText(item.location) : "") + "</p></div>" +
-    "<span class='expiry-label " + expiryStatus.state + "'><strong>" + escapeFridgeText(expiryStatus.text) +
-    "</strong>" + (expiryStatus.source ? "<small>" + escapeFridgeText(expiryStatus.source) + "</small>" : "") + "</span></div>";
+    "<" + expiryTag + " class='expiry-label " + expiryStatus.state + "'" + (expiryClickable ? " type='button' data-action='edit-grocery' data-id='" + escapeFridgeText(item.id) + "' data-focus='expiry' aria-label='Review estimated expiry for " + escapeFridgeText(name) + "'" : "") + "><strong>" + escapeFridgeText(expiryStatus.text) +
+    "</strong>" + (Number.isFinite(groceryUrgency(item)) && groceryUrgency(item) <= 3 ? "<small>" + escapeFridgeText(formatFridgeDate(itemUseBy(item))) + "</small>" : "") + (expiryStatus.source ? "<small>" + escapeFridgeText(expiryStatus.source) + "</small>" : "") + "</" + expiryTag + "></div>";
   if (editable && String(fridgeViewState.editingGroceryId) === String(item.id)) {
     html += "<form class='fridge-form grocery-edit-form'>" +
       "<div class='fridge-form-grid'><label>Name<input name='name' maxlength='120' required value='" + escapeFridgeText(name) + "'></label>" +
@@ -202,6 +204,7 @@ function fridgeRecommendation(items, leftovers) {
   }
   var urgentGrocery = items.slice().sort(function (a, b) { return groceryUrgency(a) - groceryUrgency(b); })
     .find(groceryNeedsAttention);
+  if (urgentGrocery && groceryUrgency(urgentGrocery) < 0) return "The date for " + urgentGrocery.name + " has passed. Review it before choosing ingredients.";
   if (urgentGrocery) return "Your " + urgentGrocery.name + " needs using soon. See what you can make.";
   return "Your kitchen is looking in good shape. Find an idea for what you have.";
 }
@@ -220,12 +223,12 @@ async function renderFridge() {
     "<section class='fridge-recommendation'><p class='fridge-eyebrow'>A GOOD NEXT STEP</p><p>" +
     escapeFridgeText(fridgeRecommendation(items, leftovers)) + "</p><button class='btn main' data-action='tab' data-tab='cook'>What should I cook?</button></section>" +
     "<section class='fridge-section'><div class='fridge-section-heading'><div><h3>Eat First <span aria-hidden='true'>🍽️</span></h3>" +
-    "<p>Meals you've already prepared.</p></div><button class='text-action' data-action='add-leftover'>＋ Add Leftover</button></div>";
+    "<p>Prepared meals · saved on this browser.</p></div><button class='text-action' data-action='add-leftover'>＋ Add Leftover</button></div>";
 
   if (leftovers.length) leftovers.forEach(function (leftover) { html += renderLeftoverCard(leftover); });
   else html += "<p class='fridge-empty-inline'>No leftovers waiting. Your kitchen is all caught up!</p>";
   html += "</section><section class='fridge-section'><div class='fridge-section-heading'><div><h3>Use Soon <span aria-hidden='true'>⏳</span></h3>" +
-    "<p>Groceries with an approaching date.</p></div></div>";
+    "<p>Groceries with near or past dates. Estimates are guidance.</p></div></div>";
   if (soonItems.length) soonItems.forEach(function (item) { html += renderGroceryCard(item, false); });
   else html += "<p class='fridge-empty-inline'>Nothing needs using urgently.</p>";
   html += "</section><section class='fridge-section'><div class='fridge-section-heading'><div><h3>All Groceries</h3>" +
@@ -234,6 +237,7 @@ async function renderFridge() {
   else html += "<div class='fridge-empty'><span aria-hidden='true'>🧺</span><h4>Your kitchen is ready for groceries</h4>" +
     "<p>Add ingredients to see them here.</p><button class='btn main' data-action='tab' data-tab='add'>Add groceries</button></div>";
   html += "</section><details class='fridge-activity'><summary>Recent activity</summary>";
+  if (!events.length) html += "<p>Recent activity on this browser will appear here.</p>";
   events.slice(0, 3).forEach(function (event) { html += "<p>" + escapeFridgeText(event) + "</p>"; });
   return html + "</details></section>";
 }

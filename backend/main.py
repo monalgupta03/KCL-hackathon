@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
+from demo_meals import demo_meals, violates_dietary
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,10 +20,27 @@ from pydantic import BaseModel, Field, root_validator, validator
 
 load_dotenv(Path(__file__).with_name(".env"))
 
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
+
+
+def gemini_client(timeout_ms):
+    return genai.Client(api_key=os.getenv("GEMINI_API_KEY", "").strip(), http_options=types.HttpOptions(
+        timeout=timeout_ms, retry_options=types.HttpRetryOptions(attempts=1)
+    ))
+
+
+def log_gemini_error(error):
+    # Retain actionable provider errors without logging credentials or request bodies.
+    message = str(error.message or "")
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    if key:
+        message = message.replace(key, "<redacted>")
+    logging.warning("Gemini request failed: HTTP %s %s: %s", error.code, error.status, message[:1000])
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500"],
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"],
     allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["Content-Type"],
 )
@@ -30,7 +48,7 @@ app.add_middleware(
 
 class InventoryItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    quantity: float = Field(gt=0, le=1000000)
+    quantity: float = Field(gt=0, le=1000000, multiple_of=0.01, allow_inf_nan=False)
     unit: str = Field(default="", max_length=40)
     expiry_date: date | None = None
     expiry_date_source: Literal["printed", "estimated", "unknown"] = "unknown"
@@ -127,7 +145,7 @@ def inventory_connection():
             status_code=503,
             detail="Inventory database is not configured. Set TIMESCALE_SERVICE_URL in backend/.env.",
         )
-    return psycopg.connect(service_url)
+    return psycopg.connect(service_url, connect_timeout=5)
 
 
 def ensure_inventory_tables(connection):
@@ -338,13 +356,13 @@ def estimate_expiry(request: ExpiryEstimateRequest):
         "never a verified expiry date or food-safety guarantee."
     )
     try:
-        with genai.Client(api_key=api_key) as client:
+        with gemini_client(6000) as client:
             response = client.models.generate_content(
-                model="gemini-3.8-flash",
+                model=GEMINI_MODEL,
                 contents=[prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_json_schema=EXPIRY_ESTIMATE_SCHEMA,
+                    response_schema=EXPIRY_ESTIMATE_SCHEMA,
                     temperature=0,
                 ),
             )
@@ -353,6 +371,9 @@ def estimate_expiry(request: ExpiryEstimateRequest):
             "expiry_date": result.get("expiry_date"), "expiry_date_source": "estimated"
         })
         return {"expiry_date": expiry_date, "expiry_date_source": source}
+    except genai_errors.APIError as error:
+        log_gemini_error(error)
+        return unknown_expiry_estimate()
     except Exception:
         logging.info("Gemini expiry estimation unavailable; using unknown expiry.")
         return unknown_expiry_estimate()
@@ -489,20 +510,21 @@ def scan_grocery(image: UploadFile = File(...)):
     )
 
     try:
-        with genai.Client(api_key=api_key) as client:
+        with gemini_client(15000) as client:
             response = client.models.generate_content(
-                model="gemini-3.8-flash",
+                model=GEMINI_MODEL,
                 contents=[
                     prompt,
                     types.Part.from_bytes(data=image_bytes, mime_type=image.content_type),
                 ],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_json_schema=RECOGNITION_SCHEMA,
+                    response_schema=RECOGNITION_SCHEMA,
                     temperature=0,
                 ),
             )
     except genai_errors.APIError as error:
+        log_gemini_error(error)
         if error.code == 429:
             raise HTTPException(
                 status_code=429,
@@ -614,8 +636,6 @@ class MealRecommendationResult(BaseModel):
 @app.post("/meals/recommend")
 def recommend_meals(request: MealRecommendationRequest):
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise HTTPException(status_code=503, detail="Meal recommendations are not configured.")
     try:
         with inventory_connection() as connection:
             # Do not run schema migrations or write inventory from this endpoint.
@@ -665,37 +685,47 @@ def recommend_meals(request: MealRecommendationRequest):
             "rejected_meals": request.rejected_meals,
         })
     )
+    source, notice = "gemini", ""
+    meal_recipes = None
     try:
-        with genai.Client(api_key=api_key, http_options=types.HttpOptions(
-            timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)
-        )) as client:
+        if not api_key:
+            raise ValueError("missing_configuration")
+        with gemini_client(10000) as client:
             response = client.models.generate_content(
-                model="gemini-3.8-flash", contents=[prompt],
+                model=GEMINI_MODEL, contents=[prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_json_schema=MealRecommendationResult.model_json_schema(), temperature=0,
                 ),
             )
-    except genai_errors.APIError as error:
-        if error.code == 429:
-            raise HTTPException(status_code=429, detail="Meal recommendation quota is unavailable. Try again later.") from None
-        raise HTTPException(status_code=502, detail="Meal recommendations are temporarily unavailable.") from None
-    except Exception:
-        raise HTTPException(status_code=503, detail="Meal recommendations are temporarily unavailable.") from None
-
-    try:
         result = MealRecommendationResult.model_validate_json(response.text)
         rejected = {title.casefold() for title in request.rejected_meals}
         if any(recipe.cooking_time_minutes > request.minutes for recipe in result.recipes):
             raise ValueError("Recipe exceeds the selected cooking time.")
         if any(recipe.title.casefold() in rejected for recipe in result.recipes):
             raise ValueError("Rejected meal returned.")
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=502, detail="Meal recommendations returned an unusable response. Try again later.") from None
+        if any(violates_dietary(recipe.ingredients, request.dietary_restrictions) for recipe in result.recipes):
+            raise ValueError("Recipe conflicts with dietary preferences.")
+        meal_recipes = result.recipes
+    except genai_errors.APIError as error:
+        log_gemini_error(error)
+        notice = "Gemini quota is unavailable." if error.code == 429 else "Gemini is temporarily unavailable."
+    except Exception as error:
+        logging.warning("Gemini meal request failed: exception=%s", type(error).__name__)
+        notice = "Gemini is not configured." if not api_key else "Gemini returned an unavailable or unusable response."
+    if meal_recipes is None:
+        source = "demo"
+        notice = "Demo mode - " + notice + " Showing predefined recipes matched to your pantry and time limit."
+        meal_recipes = [MealRecipe.model_validate(recipe) for recipe in demo_meals(
+            pantry, request.minutes, request.dietary_restrictions, request.rejected_meals
+        )]
+        if not meal_recipes:
+            notice += " No demo recipes fit the available quantities and dietary restrictions."
 
     recipes = []
-    for recipe in result.recipes:
+    for recipe in meal_recipes:
         output = recipe.model_dump()
+        output["source"] = source
         output["missing_ingredients"] = []
         output["freshness_checks"] = []
         priority_items = []
@@ -735,4 +765,4 @@ def recommend_meals(request: MealRecommendationRequest):
     recipes.sort(key=lambda recipe: recipe["_priority_date"])
     for recipe in recipes:
         recipe.pop("_priority_date")
-    return {"recipes": recipes, "excluded_item_count": excluded_count}
+    return {"recipes": recipes, "excluded_item_count": excluded_count, "source": source, "notice": notice}

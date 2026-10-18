@@ -73,6 +73,8 @@ def respond(message):
             assert len(kwargs['contents']) == 1 and isinstance(kwargs['contents'][0], str)
             data = json.loads(kwargs['contents'][0].split('Input JSON: ')[1])
             assert data['minutes'] == message['body']['minutes']
+            if scenario == 'unavailable':
+                raise RuntimeError('mock transport failure')
             if scenario == 'quota':
                 raise main.genai_errors.ClientError(429, {'error': {'message': 'mock quota'}})
             result = mocked_meals(data['minutes'])

@@ -120,12 +120,12 @@ class MealTests(unittest.TestCase):
             self.recipes = copy.deepcopy(original)
             mutate(self.recipes)
             with self.subTest(mutation=mutate):
-                self.assertEqual(self.recommend().status_code, 502)
+                self.assertEqual(self.recommend().json()["source"], "demo")
         self.generate.return_value = SimpleNamespace(text='not json')
-        self.assertEqual(self.client.post('/meals/recommend', json={}).status_code, 502)
+        self.assertEqual(self.client.post('/meals/recommend', json={}).json()['source'], 'demo')
 
     def test_rejected_and_unrelated_meals_are_not_returned(self):
-        self.assertEqual(self.recommend({'rejected_meals': [' Rice Bowl ']}).status_code, 502)
+        self.assertEqual(self.recommend({'rejected_meals': [' Rice Bowl ']}).json()['source'], 'demo')
         self.recipes['recipes'][0]['ingredients'] = [{'name': 'unavailable', 'quantity': 1, 'unit': 'g'}]
         self.assertEqual(self.recommend().status_code, 502)
 
@@ -139,7 +139,7 @@ class MealTests(unittest.TestCase):
 
     def test_missing_key_quota_and_upstream_errors(self):
         with patch.dict(main.os.environ, {'GEMINI_API_KEY': ''}):
-            self.assertEqual(self.recommend().status_code, 503)
+            self.assertEqual(self.recommend().json()["source"], "demo")
         self.generate.assert_not_called()
         for error, expected in [
             (main.genai_errors.ClientError(429, {'error': {'message': 'sensitive mock'}}), 429),
@@ -148,7 +148,8 @@ class MealTests(unittest.TestCase):
         ]:
             self.generate.side_effect = error
             response = self.recommend()
-            self.assertEqual(response.status_code, expected)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['source'], 'demo')
             self.assertNotIn('sensitive mock', response.text)
 
     def test_database_error_is_graceful(self):
@@ -157,6 +158,14 @@ class MealTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn('sensitive mock', response.text)
         self.generate.assert_not_called()
+
+    def test_obvious_dietary_conflicts_use_honest_fallback(self):
+        self.recipes['recipes'][0]['ingredients'].append({'name': 'eggs', 'quantity': 1, 'unit': 'pieces'})
+        response = self.recommend({'dietary_restrictions': ['vegan']})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['source'], 'demo')
+        for recipe in response.json()['recipes']:
+            self.assertFalse(any(i['name'] == 'eggs' for i in recipe['ingredients']))
 
     def test_invalid_preferences_rejected_before_gemini(self):
         for payload in ({'dietary_restrictions': ['']}, {'rejected_meals': ['x' * 201]}, {'dietary_restrictions': ['vegan'] * 21}):
