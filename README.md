@@ -50,7 +50,11 @@ Track leftovers with quantities, preparation times and storage locations. **Left
 
 **Our work:** We chose food waste as the problem to tackle, sketched the screens and user journey, and defined the priorities: knowing what is in the fridge, using food before it is forgotten, and finding meals from those ingredients. We guided the implementation through design feedback, feature decisions and reviewing the app's behavior.
 
-<!-- Replace the placeholder above with two inline image tags, each width="300", once the sketch files are added. -->
+<p align="center">
+  <img src="assets/sk1.JPG" alt="SavourIt design sketch 1" width="220">&nbsp;
+  <img src="assets/sk2.JPG" alt="SavourIt design sketch 2" width="220">&nbsp;
+  <img src="assets/sk3.JPG" alt="SavourIt design sketch 3" width="220">
+</p>
 
 **AI-assisted development:** GitHub Copilot helped implement the initial expiry estimation, recognition metadata and database persistence. Gemini and OpenAI Codex helped with backend/frontend integration, debugging, meal recommendations, fallback logic, UI polish, automated tests and documentation. AI contributed implementation code; the product direction and sketches came from us.
 
