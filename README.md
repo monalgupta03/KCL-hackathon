@@ -4,15 +4,11 @@
 
 ### Use what you have. Waste less.
 
-A fridge companion built to reduce food waste by helping you use the groceries you already have.
-
 **Vanilla JavaScript · FastAPI · TigerData PostgreSQL · Google Gemini**
 
 **[Demo video - add link]** 
 
 </div>
-
-> **Hero image placeholder:** Add a desktop/mobile overview showing the pantry and Cook screens.
 
 ## The story
 
@@ -50,42 +46,19 @@ Track leftovers with quantities, preparation times and storage locations. **Left
   <img src="assets/4.jpeg" alt="SavourIt app screenshot 4" width="300">
 </p>
 
-## Where AI is used
+## What we built and how AI helped
 
-Gemini runs in the backend; API keys stay out of the frontend.
+**Our work:** We chose food waste as the problem to tackle, sketched the screens and user journey, and defined the priorities: knowing what is in the fridge, using food before it is forgotten, and finding meals from those ingredients. We guided the implementation through design feedback, feature decisions and reviewing the app's behavior.
 
-| Feature | Information sent to Gemini |
-| --- | --- |
-| Grocery recognition | The uploaded photo and recognition prompt. |
-| Freshness estimation | The food name and today's date. |
-| Meal recommendations | Pantry ingredients, quantities, dates, time limit, dietary preferences and rejected meals. |
+<!-- Replace the placeholder above with two inline image tags, each width="300", once the sketch files are added. -->
 
-The backend validates responses, checks stock quantities and obvious dietary conflicts, and excludes past-dated items from meals. If Gemini fails, Cook can show clearly labelled **Demo mode** recipes matched to actual pantry quantities and preferences, rather than invented AI results.
+**AI-assisted development:** GitHub Copilot helped implement the initial expiry estimation, recognition metadata and database persistence. Gemini and OpenAI Codex helped with backend/frontend integration, debugging, meal recommendations, fallback logic, UI polish, automated tests and documentation. AI contributed implementation code; the product direction and sketches came from us.
 
-**Estimated dates are guidance, not food-safety guarantees.** Confirmation preserves the original source internally. Check food condition, packaging and allergen information before use.
-
-### AI used while building the project
-
-AI assistance was used for development as well as the runtime Gemini features above.
-
-| Tool | Development contribution |
-| --- | --- |
-| **GitHub Copilot** | Assisted the earlier implementation of expiry estimation, recognition expiry metadata, TigerData expiry persistence, date confirmation and urgency/sorting. |
-| **Gemini & OpenAI Codex** | Assisted verification and debugging, pantry Edit/Eaten persistence, the meal API and frontend integration, deterministic fallback logic, request caching and race fixes, UI polish, regression tests, deployment scaffolding and this README draft. |
-| **Project author/team** | Directed the problem, product requirements, feature priorities and design feedback, and reviewed app behavior and submission decisions. |
-
-AI-assisted code spans `backend/`, `js/`, `css/`, `tests/` and the optional deployment configuration. Inventory rules, stock checks, confirmation state and event recording are explicit application code, rather than decisions left entirely to an LLM. The interface uses CSS and Unicode emoji.
+**AI in the app:** Gemini recognises groceries in photos, suggests freshness dates and generates recipes using pantry ingredients, time limits and dietary preferences. Application code checks quantities and responses before displaying results. If Gemini is unavailable, predefined pantry-matched recipes are labelled **Demo mode**. Estimated dates remain guidance, not food-safety guarantees.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    UI[HTML / CSS / JavaScript] --> API[FastAPI]
-    API --> DB[(TigerData PostgreSQL)]
-    API --> Gemini[Google Gemini API]
-    API --> Demo[Meal fallback]
-    UI --> Local[(Browser storage: leftovers)]
-```
+![SavourIt architecture](assets/Architecture.jpeg)
 
 ## Project structure
 
@@ -109,50 +82,40 @@ flowchart LR
 └── README.md
 ```
 
-## Run locally
+### Run locally
 
-You need **Python 3.12+**, an existing **TigerData PostgreSQL** database, and a **Gemini API key** for live AI features. Node.js 20+ is only needed for frontend tests; there is no npm build step.
+Requires Python 3.12+, TigerData PostgreSQL and a Gemini key for live AI. Node.js 20+ is only needed for frontend tests.
 
-### 1. Install dependencies
-
-From the project root:
+**Install:** Run from the project root.
 
 ```sh
 python3 -m venv backend/.venv
 backend/.venv/bin/python -m pip install -r backend/requirements.txt
 ```
 
-### 2. Configure the backend
-
-Create `backend/.env` from the example without overwriting existing credentials. Never commit this file.
+**Configure:** Create `backend/.env` using `.env.example`. Preserve existing credentials and never commit this file.
 
 ```dotenv
 GEMINI_API_KEY='YOUR_GEMINI_API_KEY'
 TIMESCALE_SERVICE_URL='postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require'
-# Optional:
-GEMINI_MODEL='gemini-3.8-flash'
+GEMINI_MODEL='gemini-3.8-flash' # Optional; this is the default
 ```
 
-The database role needs read/write and table creation/ALTER permissions. `GEMINI_MODEL` is optional and defaults to the value shown above.
+The database role needs read/write and table creation/ALTER permissions.
 
-### 3. Start the app
-
-Backend, from the project root:
+**Backend:** Run from the project root.
 
 ```sh
 backend/.venv/bin/python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
 ```
 
-Frontend, in another terminal from the same directory:
+**Frontend:** Run in a second terminal from the project root.
 
 ```sh
 python3 -m http.server 5500 --bind 127.0.0.1
 ```
 
-Open **http://127.0.0.1:5500/**. Camera access needs browser permission and localhost or HTTPS.
-
-- **API health:** http://127.0.0.1:8000/health - checks the API process, not Gemini or the database.
-- **Interactive API docs:** http://127.0.0.1:8000/docs - executing AI endpoints can make live requests.
+**Open:** http://127.0.0.1:5500/ - camera access needs permission and localhost or HTTPS. **API docs:** http://127.0.0.1:8000/docs. **Health:** http://127.0.0.1:8000/health checks the API process only.
 
 ## Tests
 
