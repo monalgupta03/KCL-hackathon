@@ -28,29 +28,27 @@ That is our approach to **Max Ease**: make everyday food decisions easier so les
 
 ## A quick tour
 
-### Add and review
+### 1. Add groceries and use food before it is forgotten
 
 Take a photo, upload a JPEG/PNG, or enter groceries manually. Review recognised names, quantities and expiry information before saving to TigerData. Manual entry can request a freshness estimate when you leave the date blank.
 
-> **Screenshot placeholder:** Photo recognition and editable results.
+The pantry sorts groceries by date, with unknown dates last. **Edit** updates item details; clicking **Estimated** opens the same editor. Saving changes the badge to **Confirmed**, even if the date stays the same. **Mark as Eaten** removes the remaining quantity from the active pantry while preserving the record and an `EATEN` event.
 
-### Use food before it is forgotten
+<p align="center">
+  <img src="assets/1.jpeg" alt="SavourIt Add groceries page" width="300">&nbsp;
+  <img src="assets/2.jpeg" alt="SavourIt pantry showing saved groceries" width="300">
+</p>
 
-The pantry sorts groceries by date, with unknown dates last. **Edit** updates item details; clicking **Estimated** opens the same editor. Saving changes the badge to **Confirmed**, even if the date stays the same.
-
-**Mark as Eaten** removes the remaining quantity from the active pantry while preserving the record and an `EATEN` event in TigerData.
-
-> **Screenshot placeholder:** Pantry with expiry labels and date confirmation.
-
-### Cook from your pantry
+### 2. Cook from your pantry and remember leftovers
 
 Choose **5, 15 or 30 minutes** and a dietary preference. Recipes prioritise earlier freshness dates and include quantities, instructions and any missing ingredients. Open a card for details or reject a meal for different suggestions.
 
-> **Screenshot placeholder:** Recipe cards, filters and cooking instructions.
+Track leftovers with quantities, preparation times and storage locations. **Leftovers are saved on this browser only.** After cooking, update ingredients through pantry Edit or Mark as Eaten; recipes do not automatically deduct stock.
 
-### Remember leftovers too
-
-Track prepared food with quantities, preparation times and storage locations. **Leftovers are saved on this browser only.** After cooking, update ingredients through pantry Edit or Mark as Eaten; recipes do not automatically deduct stock.
+<p align="center">
+  <img src="assets/3.jpeg" alt="SavourIt app screenshot 3" width="300">&nbsp;
+  <img src="assets/4.jpeg" alt="SavourIt app screenshot 4" width="300">
+</p>
 
 ## Where AI is used
 
@@ -66,14 +64,17 @@ The backend validates responses, checks stock quantities and obvious dietary con
 
 **Estimated dates are guidance, not food-safety guarantees.** Confirmation preserves the original source internally. Check food condition, packaging and allergen information before use.
 
-### Development AI disclosure
+### AI used while building the project
 
-| Tool | Contribution |
+AI assistance was used for development as well as the runtime Gemini features above.
+
+| Tool | Development contribution |
 | --- | --- |
-| **GitHub Copilot** | Assisted expiry estimation, recognition metadata, TigerData expiry persistence, confirmation and urgency/sorting. |
-| **Gemini & OpenAI Codex** | Assisted debugging, meal API integration, fallback logic, caching, UI polish, tests, deployment scaffolding and this README draft. |
+| **GitHub Copilot** | Assisted the earlier implementation of expiry estimation, recognition expiry metadata, TigerData expiry persistence, date confirmation and urgency/sorting. |
+| **Gemini & OpenAI Codex** | Assisted verification and debugging, pantry Edit/Eaten persistence, the meal API and frontend integration, deterministic fallback logic, request caching and race fixes, UI polish, regression tests, deployment scaffolding and this README draft. |
+| **Project author/team** | Directed the problem, product requirements, feature priorities and design feedback, and reviewed app behavior and submission decisions. |
 
-Inventory rules, quantity checks and event recording remain explicit application code. The UI uses CSS and Unicode emoji.
+AI-assisted code spans `backend/`, `js/`, `css/`, `tests/` and the optional deployment configuration. Inventory rules, stock checks, confirmation state and event recording are explicit application code, rather than decisions left entirely to an LLM. The interface uses CSS and Unicode emoji.
 
 ## Architecture
 
